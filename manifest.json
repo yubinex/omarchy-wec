@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "yubinex.wec",
+  "name": "WEC Upcoming",
+  "version": "1.0.0",
+  "author": "yubinex",
+  "description": "Shows the next FIA World Endurance Championship race in the Omarchy bar.",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "WEC Upcoming",
+    "description": "Next FIA WEC race and countdown, refreshed from the official FIA WEC calendar.",
+    "category": "Info",
+    "aliases": ["wec", "endurance", "lemans"],
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
