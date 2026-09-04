@@ -37,6 +37,8 @@ jobs:
           shopt -s nullglob
           files=(*.qml)
           test "${#files[@]}" -gt 0
+          qmlformat="/usr/lib/qt6/bin/qmlformat"
+          test -x "${qmlformat}"
           for file in "${files[@]}"; do
-            qmlformat "${file}" >/dev/null
+            "${qmlformat}" "${file}" >/dev/null
           done
