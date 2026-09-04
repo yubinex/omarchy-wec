@@ -11,19 +11,18 @@ schedule when available, and upcoming races.
 - Calendar and event data: [FIA WEC](https://www.fiawec.com/)
 - The plugin only makes bounded HTTPS requests to the official calendar.
 
-## Install for development
+## Installation
 
-Omarchy discovers user plugins at `~/.config/omarchy/plugins/<plugin-id>/`.
-Use a symlink so the running plugin points to this checkout:
+Install and enable the plugin with Omarchy:
 
 ```bash
-ln -s ~/Projects/omarchy-wec ~/.config/omarchy/plugins/yubinex.wec
+omarchy plugin add https://github.com/yubinex/omarchy-wec.git --enable
 ```
 
-The shell reloads the plugin when files change. If needed, run:
+Update it later with:
 
 ```bash
-omarchy restart shell
+omarchy plugin update yubinex.wec --yes
 ```
 
 ## Controls
