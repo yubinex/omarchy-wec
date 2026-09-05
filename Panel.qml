@@ -196,6 +196,12 @@ Panel {
 
   function twoDigits(value) { return value < 10 ? "0" + value : String(value) }
 
+  // A laptop can fit the panel but not the desktop-sized monospace schedule.
+  // Scale text from the available row width while preserving a readable floor.
+  function compactFontSize(width, maximum, minimum, widthPerPixel) {
+    return Math.max(minimum, Math.min(maximum, Math.floor(width / widthPerPixel)))
+  }
+
   function sessionStatusColor(session) {
     var minutes = Math.ceil((Date.parse(session.start) - nowMs) / 60000)
     if (sessionStatus(session) === "LIVE") return "#df5b5b"
@@ -377,17 +383,17 @@ Panel {
         width: parent.width
         visible: root.activeTab === "weekend" && root.nextRace && root.raceDetails(root.nextRace).sessions.length > 0
         spacing: Style.space(7)
-        Text { text: "WEEKEND SCHEDULE · LOCAL TIME (" + root.localTimeZone() + ")"; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12; font.bold: true }
+        Text { width: parent.width; text: "WEEKEND SCHEDULE · LOCAL TIME (" + root.localTimeZone() + ")"; elide: Text.ElideRight; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: root.compactFontSize(parent.width, 12, 10, 42); font.bold: true }
         Repeater {
           model: root.nextRace ? root.visibleSessions(root.nextRace) : []
           delegate: Row {
             required property var modelData
             width: parent.width
             opacity: root.sessionStatus(modelData) === "DONE" ? 0.45 : 1.0
-            Text { id: sessionDay; width: Math.min(Style.space(100), parent.width * 0.25); text: Qt.formatDate(new Date(modelData.start), "ddd d MMM"); elide: Text.ElideRight; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
-            Text { width: Math.max(0, parent.width - sessionDay.width - sessionTime.width - sessionStatusText.width); text: modelData.name; elide: Text.ElideRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
-            Text { id: sessionTime; width: Math.min(Style.space(60), parent.width * 0.18); text: Qt.formatTime(new Date(modelData.start), "HH:mm"); horizontalAlignment: Text.AlignRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: modelData.name === "Race" }
-            Text { id: sessionStatusText; width: Math.min(Style.space(70), parent.width * 0.22); text: root.sessionStatus(modelData); horizontalAlignment: Text.AlignRight; elide: Text.ElideRight; color: root.sessionStatusColor(modelData); font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12; font.bold: true }
+            Text { id: sessionDay; width: Math.min(Style.space(100), parent.width * 0.25); text: Qt.formatDate(new Date(modelData.start), "ddd d MMM"); elide: Text.ElideRight; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: root.compactFontSize(parent.width, 14, 11, 36) }
+            Text { width: Math.max(0, parent.width - sessionDay.width - sessionTime.width - sessionStatusText.width); text: modelData.name; elide: Text.ElideRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: root.compactFontSize(parent.width, 14, 11, 36) }
+            Text { id: sessionTime; width: Math.min(Style.space(60), parent.width * 0.18); text: Qt.formatTime(new Date(modelData.start), "HH:mm"); horizontalAlignment: Text.AlignRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: root.compactFontSize(parent.width, 14, 11, 36); font.bold: modelData.name === "Race" }
+            Text { id: sessionStatusText; width: Math.min(Style.space(70), parent.width * 0.22); text: root.sessionStatus(modelData); horizontalAlignment: Text.AlignRight; elide: Text.ElideRight; color: root.sessionStatusColor(modelData); font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: root.compactFontSize(parent.width, 12, 9, 50); font.bold: true }
           }
         }
       }
@@ -437,28 +443,29 @@ Panel {
       PanelSeparator { width: parent.width; visible: root.activeTab === "weekend" }
 
       Row {
-        width: parent.width
-        visible: root.activeTab === "weekend"
-        Text {
-          width: parent.width - calendarLink.implicitWidth - Style.space(12)
-          text: root.calendarSourceText()
-          color: root.dim
-          font.family: root.bar ? root.bar.fontFamily : Style.font.family
-          font.pixelSize: 12
-        }
-        Text {
-          id: calendarLink
-          text: "OPEN FIA WEC ↗"
-          color: root.fg
-          font.family: root.bar ? root.bar.fontFamily : Style.font.family
-          font.pixelSize: 12
-          font.bold: true
-          MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onClicked: if (root.bar) root.bar.run("xdg-open https://www.fiawec.com/en/")
+          width: parent.width
+          visible: root.activeTab === "weekend"
+          Text {
+            width: parent.width - calendarLink.implicitWidth - Style.space(12)
+            text: root.calendarSourceText()
+            elide: Text.ElideRight
+            color: root.dim
+            font.family: root.bar ? root.bar.fontFamily : Style.font.family
+            font.pixelSize: root.compactFontSize(parent.width, 12, 9, 45)
           }
-        }
+          Text {
+            id: calendarLink
+            text: "OPEN FIA WEC ↗"
+            color: root.fg
+            font.family: root.bar ? root.bar.fontFamily : Style.font.family
+            font.pixelSize: root.compactFontSize(parent.width, 12, 9, 45)
+            font.bold: true
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              onClicked: if (root.bar) root.bar.run("xdg-open https://www.fiawec.com/en/")
+            }
+          }
       }
 
       Column {
@@ -506,17 +513,21 @@ Panel {
 
         Text {
           text: root.standingsTitle()
+          width: parent.width
+          elide: Text.ElideRight
           color: root.fg
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
-          font.pixelSize: 17
+          font.pixelSize: root.compactFontSize(parent.width, 17, 13, 30)
           font.bold: true
         }
 
         Text {
           text: "2026 FIA World Endurance Championship"
+          width: parent.width
+          elide: Text.ElideRight
           color: root.dim
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
-          font.pixelSize: 13
+          font.pixelSize: root.compactFontSize(parent.width, 13, 10, 40)
         }
 
         PanelSeparator { width: parent.width }
@@ -529,18 +540,19 @@ Panel {
             width: parent.width
             height: Style.space(38)
 
-            Text { width: Style.space(46); height: parent.height; text: "P" + modelData.position; verticalAlignment: Text.AlignVCenter; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
+            Text { id: standingsRank; width: Math.min(Style.space(46), parent.width * 0.11); height: parent.height; text: "P" + modelData.position; verticalAlignment: Text.AlignVCenter; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: root.compactFontSize(parent.width, 14, 10, 38) }
             Column {
-              width: parent.width - Style.space(130)
+              width: parent.width - standingsRank.width - standingsPoints.width
               anchors.verticalCenter: parent.verticalCenter
-              Text { width: parent.width; text: modelData.name; elide: Text.ElideRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 15; font.bold: modelData.position === 1 }
-              Text { visible: Boolean(modelData.detail); text: modelData.detail || ""; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12 }
+              Text { width: parent.width; text: modelData.name; elide: Text.ElideRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: root.compactFontSize(parent.width, 15, 11, 32); font.bold: modelData.position === 1 }
+              Text { width: parent.width; visible: Boolean(modelData.detail); text: modelData.detail || ""; elide: Text.ElideRight; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: root.compactFontSize(parent.width, 12, 9, 38) }
             }
             Column {
-              width: Style.space(84)
+              id: standingsPoints
+              width: Math.min(Style.space(84), parent.width * 0.2)
               anchors.verticalCenter: parent.verticalCenter
-              Text { width: parent.width; text: modelData.points + " pts"; horizontalAlignment: Text.AlignRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: true }
-              Text { width: parent.width; text: root.pointsGap(modelData); horizontalAlignment: Text.AlignRight; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 11 }
+              Text { width: parent.width; text: modelData.points + " pts"; horizontalAlignment: Text.AlignRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: root.compactFontSize(parent.width, 14, 10, 38); font.bold: true }
+              Text { width: parent.width; text: root.pointsGap(modelData); horizontalAlignment: Text.AlignRight; elide: Text.ElideRight; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: root.compactFontSize(parent.width, 11, 8, 45) }
             }
           }
         }
@@ -572,16 +584,17 @@ Panel {
           Text {
             width: parent.width - standingsLink.implicitWidth - Style.space(12)
             text: root.standingsSourceText()
+            elide: Text.ElideRight
             color: root.dim
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
-            font.pixelSize: 12
+            font.pixelSize: root.compactFontSize(parent.width, 12, 9, 45)
           }
           Text {
             id: standingsLink
             text: "OPEN FIA WEC ↗"
             color: root.fg
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
-            font.pixelSize: 12
+            font.pixelSize: root.compactFontSize(parent.width, 12, 9, 45)
             font.bold: true
             MouseArea {
               anchors.fill: parent
@@ -621,6 +634,8 @@ Panel {
 
         Text {
           text: "Preferences are saved to your Omarchy bar layout."
+          width: parent.width
+          elide: Text.ElideRight
           color: root.dim
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: 13
@@ -634,8 +649,8 @@ Panel {
           Column {
             width: parent.width - flagsToggle.width
             anchors.verticalCenter: parent.verticalCenter
-            Text { text: "SHOW RACE FLAGS"; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: true }
-            Text { text: "Display event-country flags in the weekend view."; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12 }
+            Text { width: parent.width; text: "SHOW RACE FLAGS"; elide: Text.ElideRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: true }
+            Text { width: parent.width; text: "Display event-country flags in the weekend view."; elide: Text.ElideRight; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12 }
           }
           Rectangle {
             id: flagsToggle
@@ -657,8 +672,8 @@ Panel {
           Column {
             width: parent.width - completedToggle.width
             anchors.verticalCenter: parent.verticalCenter
-            Text { text: "SHOW COMPLETED SESSIONS"; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: true }
-            Text { text: "Keep completed practice and qualifying sessions visible."; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12 }
+            Text { width: parent.width; text: "SHOW COMPLETED SESSIONS"; elide: Text.ElideRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: true }
+            Text { width: parent.width; text: "Keep completed practice and qualifying sessions visible."; elide: Text.ElideRight; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12 }
           }
           Rectangle {
             id: completedToggle
@@ -680,8 +695,8 @@ Panel {
           Column {
             width: parent.width - displayChoices.width - Style.space(12)
             anchors.verticalCenter: parent.verticalCenter
-            Text { text: "BAR DISPLAY"; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: true }
-            Text { text: "Choose the information shown in the bar."; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12 }
+            Text { width: parent.width; text: "BAR DISPLAY"; elide: Text.ElideRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: true }
+            Text { width: parent.width; text: "Choose the information shown in the bar."; elide: Text.ElideRight; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12 }
           }
           Row {
             id: displayChoices
