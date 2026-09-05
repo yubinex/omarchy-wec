@@ -12,6 +12,48 @@ Panel {
   property var anchorItem: null
   property var races: []
   property double nowMs: Date.now()
+  property double calendarUpdatedMs: 0
+  property double standingsUpdatedMs: 0
+  property string activeTab: "weekend"
+  property string standingsTab: "manufacturers"
+  // Official FIA WEC classifications, captured on 4 Sep 2026. These remain
+  // explicitly labelled as a snapshot until each classification is fetched.
+  property var standings: ({
+    manufacturers: [
+    { position: 1, name: "Toyota", points: 132 },
+    { position: 2, name: "BMW", points: 127 },
+    { position: 3, name: "Ferrari", points: 88 },
+    { position: 4, name: "Cadillac", points: 60 },
+    { position: 5, name: "Alpine", points: 41 },
+    { position: 6, name: "Aston Martin", points: 40 },
+    { position: 7, name: "Peugeot", points: 15 },
+    { position: 8, name: "Genesis", points: 6 }
+    ],
+    hypercarDrivers: [
+      { position: 1, name: "René Rast / Robin Frijns", detail: "#20 BMW", points: 75 },
+      { position: 2, name: "Kobayashi / Conway / de Vries", detail: "#7 Toyota", points: 75 },
+      { position: 3, name: "Sheldon van der Linde", detail: "#20 BMW", points: 65 },
+      { position: 4, name: "Pier Guidi / Giovinazzi / Calado", detail: "#51 Ferrari", points: 57 },
+      { position: 5, name: "Hartley / Hirakawa / Buemi", detail: "#8 Toyota", points: 56 },
+      { position: 6, name: "Magnussen / Marciello", detail: "#15 BMW", points: 50 }
+    ],
+    lmgt3Teams: [
+      { position: 1, name: "TF Sport", detail: "#33 Corvette", points: 76 },
+      { position: 2, name: "The Bend Manthey", detail: "#92 Porsche", points: 49 },
+      { position: 3, name: "Team WRT", detail: "#69 BMW", points: 43 },
+      { position: 4, name: "Racing Team Turkey by TF", detail: "#34 Corvette", points: 43 },
+      { position: 5, name: "Vista AF Corse", detail: "#21 Ferrari", points: 42 },
+      { position: 6, name: "Akkodis ASP Team", detail: "#87 Lexus", points: 38 }
+    ],
+    lmgt3Drivers: [
+      { position: 1, name: "Jonny Edgar", detail: "#33 Corvette", points: 76 },
+      { position: 2, name: "Nicky Catsburg", detail: "#33 Corvette", points: 72 },
+      { position: 3, name: "Ben Keating", detail: "#33 Corvette", points: 54 },
+      { position: 4, name: "Pera / Lietz / Shahin", detail: "#92 Porsche", points: 49 },
+      { position: 5, name: "McIntosh / Harper / Thompson", detail: "#69 BMW", points: 43 },
+      { position: 6, name: "Eastwood / Dempsey / Yoluç", detail: "#34 Corvette", points: 43 }
+    ]
+  })
   readonly property color fg: bar ? bar.foreground : Color.foreground
   readonly property color dim: Qt.darker(fg, 1.55)
 
@@ -41,6 +83,28 @@ Panel {
   }
 
   function dateText(race) { return Qt.formatDate(new Date(dateMs(race.date)), "dddd, d MMMM yyyy") }
+
+  function calendarSourceText() {
+    if (calendarUpdatedMs <= 0) return "Official FIA WEC calendar · bundled schedule"
+    return "Official FIA WEC calendar · updated "
+      + Qt.formatDateTime(new Date(calendarUpdatedMs), "d MMM, HH:mm")
+  }
+
+  function standingsTitle() {
+    var titles = {
+      manufacturers: "HYPERCAR MANUFACTURERS",
+      hypercarDrivers: "HYPERCAR DRIVERS",
+      lmgt3Teams: "LMGT3 TEAMS",
+      lmgt3Drivers: "LMGT3 DRIVERS"
+    }
+    return titles[standingsTab]
+  }
+
+  function standingsSourceText() {
+    if (standingsUpdatedMs <= 0) return "Official FIA WEC standings · snapshot: 4 Sep 2026"
+    return "Official FIA WEC standings · updated "
+      + Qt.formatDateTime(new Date(standingsUpdatedMs), "d MMM, HH:mm")
+  }
 
   function sessionStatus(session) {
     var start = Date.parse(session.start)
@@ -90,11 +154,24 @@ Panel {
     open: root.opened
     centerOnBar: true
     contentWidth: Style.space(520)
-    contentHeight: Style.space(560)
+    // KeyboardPanel accounts for the display work area. It uses natural size
+    // until needed content would exceed the available screen height.
+    contentHeight: popup.fittedContentHeight(content.implicitHeight + Style.space(48))
 
-    Column {
+    Flickable {
+      id: scroll
       anchors.fill: parent
-      anchors.margins: Style.space(24)
+      contentWidth: width
+      contentHeight: content.implicitHeight + Style.space(48)
+      clip: true
+      boundsBehavior: Flickable.StopAtBounds
+      interactive: contentHeight > height
+
+      Column {
+      id: content
+      x: Style.space(24)
+      y: Style.space(24)
+      width: scroll.width - Style.space(48)
       spacing: Style.space(12)
 
       Text {
@@ -130,12 +207,48 @@ Panel {
         font.bold: true
       }
 
-      PanelSeparator { width: parent.width }
+      Row {
+        spacing: Style.space(8)
+
+        Repeater {
+          model: [
+            { id: "weekend", label: "RACE WEEKEND" },
+            { id: "standings", label: "STANDINGS" }
+          ]
+
+          delegate: Rectangle {
+            required property var modelData
+            implicitWidth: tabLabel.implicitWidth + Style.space(18)
+            implicitHeight: Style.space(28)
+            radius: Style.space(3)
+            color: root.activeTab === modelData.id ? Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.16) : "transparent"
+            border.width: 1
+            border.color: root.activeTab === modelData.id ? root.fg : root.dim
+
+            Text {
+              id: tabLabel
+              anchors.centerIn: parent
+              text: modelData.label
+              color: root.activeTab === modelData.id ? root.fg : root.dim
+              font.family: root.bar ? root.bar.fontFamily : Style.font.family
+              font.pixelSize: 12
+              font.bold: true
+            }
+
+            MouseArea {
+              anchors.fill: parent
+              onClicked: root.activeTab = modelData.id
+            }
+          }
+        }
+      }
+
+      PanelSeparator { width: parent.width; visible: root.activeTab === "weekend" }
 
       Row {
         width: parent.width
         spacing: Style.space(36)
-        visible: root.nextRace !== null
+        visible: root.activeTab === "weekend" && root.nextRace !== null
 
         Column {
           width: parent.width * 0.62
@@ -152,11 +265,11 @@ Panel {
         }
       }
 
-      PanelSeparator { width: parent.width }
+      PanelSeparator { width: parent.width; visible: root.activeTab === "weekend" }
 
       Column {
         width: parent.width
-        visible: root.nextRace && root.raceDetails(root.nextRace).sessions.length > 0
+        visible: root.activeTab === "weekend" && root.nextRace && root.raceDetails(root.nextRace).sessions.length > 0
         spacing: Style.space(7)
         Text { text: "WEEKEND SCHEDULE · TRACK TIME"; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12; font.bold: true }
         Repeater {
@@ -172,9 +285,10 @@ Panel {
         }
       }
 
-      PanelSeparator { width: parent.width; visible: root.nextRace && root.raceDetails(root.nextRace).sessions.length > 0 }
+      PanelSeparator { width: parent.width; visible: root.activeTab === "weekend" && root.nextRace && root.raceDetails(root.nextRace).sessions.length > 0 }
 
       Text {
+        visible: root.activeTab === "weekend"
         text: "UPCOMING RACES"
         color: root.dim
         font.family: root.bar ? root.bar.fontFamily : Style.font.family
@@ -183,7 +297,7 @@ Panel {
       }
 
       Repeater {
-        model: root.followingRaces()
+        model: root.activeTab === "weekend" ? root.followingRaces() : []
         delegate: Row {
           required property var modelData
           width: parent.width
@@ -206,6 +320,100 @@ Panel {
           }
         }
       }
+
+      PanelSeparator { width: parent.width; visible: root.activeTab === "weekend" }
+
+      Text {
+        visible: root.activeTab === "weekend"
+        text: root.calendarSourceText()
+        color: root.dim
+        font.family: root.bar ? root.bar.fontFamily : Style.font.family
+        font.pixelSize: 12
+      }
+
+      Column {
+        width: parent.width
+        visible: root.activeTab === "standings"
+        spacing: Style.space(10)
+
+        Flow {
+          width: parent.width
+          spacing: Style.space(6)
+          Repeater {
+            model: [
+              { id: "manufacturers", label: "HYPERCAR MFRS" },
+              { id: "hypercarDrivers", label: "HYPERCAR DRIVERS" },
+              { id: "lmgt3Teams", label: "LMGT3 TEAMS" },
+              { id: "lmgt3Drivers", label: "LMGT3 DRIVERS" }
+            ]
+            delegate: Rectangle {
+              required property var modelData
+              implicitWidth: categoryLabel.implicitWidth + Style.space(16)
+              implicitHeight: Style.space(25)
+              radius: Style.space(3)
+              color: root.standingsTab === modelData.id ? Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.16) : "transparent"
+              border.width: 1
+              border.color: root.standingsTab === modelData.id ? root.fg : root.dim
+              Text {
+                id: categoryLabel
+                anchors.centerIn: parent
+                text: modelData.label
+                color: root.standingsTab === modelData.id ? root.fg : root.dim
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: 11
+                font.bold: true
+              }
+              MouseArea { anchors.fill: parent; onClicked: root.standingsTab = modelData.id }
+            }
+          }
+        }
+
+        Text {
+          text: root.standingsTitle()
+          color: root.fg
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.pixelSize: 17
+          font.bold: true
+        }
+
+        Text {
+          text: "2026 FIA World Endurance Championship"
+          color: root.dim
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.pixelSize: 13
+        }
+
+        PanelSeparator { width: parent.width }
+
+        Repeater {
+          model: root.standings[root.standingsTab]
+
+          delegate: Row {
+            required property var modelData
+            width: parent.width
+            height: modelData.detail ? Style.space(38) : Style.space(30)
+
+            Text { width: Style.space(46); text: "P" + modelData.position; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
+            Column {
+              width: parent.width - Style.space(130)
+              anchors.verticalCenter: parent.verticalCenter
+              Text { width: parent.width; text: modelData.name; elide: Text.ElideRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 15; font.bold: modelData.position === 1 }
+              Text { visible: Boolean(modelData.detail); text: modelData.detail || ""; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12 }
+            }
+            Text { width: Style.space(84); text: modelData.points + " pts"; horizontalAlignment: Text.AlignRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: true }
+          }
+        }
+
+        PanelSeparator { width: parent.width }
+
+        Text {
+          text: root.standingsSourceText()
+          color: root.dim
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.pixelSize: 12
+        }
+      }
+    }
     }
   }
 }
