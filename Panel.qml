@@ -229,7 +229,9 @@ Panel {
     bar: root.bar
     open: root.opened
     centerOnBar: true
-    contentWidth: Style.space(520)
+    // Preserve the 520px desktop design, but never exceed the work area on
+    // smaller or high-DPI displays.
+    contentWidth: popup.fittedContentWidth(Style.space(520))
     // KeyboardPanel accounts for the display work area. It uses natural size
     // until needed content would exceed the available screen height.
     contentHeight: popup.fittedContentHeight(content.implicitHeight + Style.space(48))
@@ -353,17 +355,19 @@ Panel {
         visible: root.activeTab === "weekend" && root.nextRace !== null
 
         Column {
+          id: venueDetails
           width: parent.width * 0.62
           spacing: Style.space(4)
           Text { text: "VENUE"; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12; font.bold: true }
-          Text { text: root.nextRace ? root.raceDetails(root.nextRace).venue : ""; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 15 }
-          Text { text: root.nextRace ? root.raceDetails(root.nextRace).location : ""; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
+          Text { width: parent.width; text: root.nextRace ? root.raceDetails(root.nextRace).venue : ""; elide: Text.ElideRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 15 }
+          Text { width: parent.width; text: root.nextRace ? root.raceDetails(root.nextRace).location : ""; elide: Text.ElideRight; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
         }
         Column {
+          width: parent.width - parent.spacing - venueDetails.width
           spacing: Style.space(4)
           Text { text: "TRACK"; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12; font.bold: true }
-          Text { text: root.nextRace ? root.raceDetails(root.nextRace).trackLength : ""; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 15 }
-          Text { text: root.nextRace && root.raceDetails(root.nextRace).turns ? root.raceDetails(root.nextRace).turns + " turns" : ""; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
+          Text { width: parent.width; text: root.nextRace ? root.raceDetails(root.nextRace).trackLength : ""; elide: Text.ElideRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 15 }
+          Text { width: parent.width; text: root.nextRace && root.raceDetails(root.nextRace).turns ? root.raceDetails(root.nextRace).turns + " turns" : ""; elide: Text.ElideRight; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
         }
       }
 
@@ -380,10 +384,10 @@ Panel {
             required property var modelData
             width: parent.width
             opacity: root.sessionStatus(modelData) === "DONE" ? 0.45 : 1.0
-            Text { width: Style.space(100); text: Qt.formatDate(new Date(modelData.start), "ddd d MMM"); color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
-            Text { width: parent.width - Style.space(230); text: modelData.name; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
-            Text { width: Style.space(60); text: Qt.formatTime(new Date(modelData.start), "HH:mm"); horizontalAlignment: Text.AlignRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: modelData.name === "Race" }
-            Text { width: Style.space(70); text: root.sessionStatus(modelData); horizontalAlignment: Text.AlignRight; color: root.sessionStatusColor(modelData); font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12; font.bold: true }
+            Text { id: sessionDay; width: Math.min(Style.space(100), parent.width * 0.25); text: Qt.formatDate(new Date(modelData.start), "ddd d MMM"); elide: Text.ElideRight; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
+            Text { width: Math.max(0, parent.width - sessionDay.width - sessionTime.width - sessionStatusText.width); text: modelData.name; elide: Text.ElideRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
+            Text { id: sessionTime; width: Math.min(Style.space(60), parent.width * 0.18); text: Qt.formatTime(new Date(modelData.start), "HH:mm"); horizontalAlignment: Text.AlignRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: modelData.name === "Race" }
+            Text { id: sessionStatusText; width: Math.min(Style.space(70), parent.width * 0.22); text: root.sessionStatus(modelData); horizontalAlignment: Text.AlignRight; elide: Text.ElideRight; color: root.sessionStatusColor(modelData); font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12; font.bold: true }
           }
         }
       }
