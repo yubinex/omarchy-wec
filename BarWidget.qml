@@ -28,13 +28,8 @@ BarWidget {
   property double calendarUpdatedMs: 0
   property var standings: null
   property double standingsUpdatedMs: 0
-  property var currentSessions: [
-    { short: "FP1", start: "2026-09-04T11:30:00-05:00", duration: 90 },
-    { short: "FP2", start: "2026-09-04T16:00:00-05:00", duration: 90 },
-    { short: "FP3", start: "2026-09-05T11:00:00-05:00", duration: 90 },
-    { short: "QUAL", start: "2026-09-05T15:00:00-05:00", duration: 90 },
-    { short: "RACE", start: "2026-09-06T13:00:00-05:00", duration: 360 }
-  ]
+  property var weekendDetails: ({})
+  property string weekendSlug: ""
 
   readonly property var nextRace: {
     for (var i = 0; i < races.length; ++i) {
@@ -45,9 +40,15 @@ BarWidget {
     return null
   }
   readonly property var nextSession: {
+    var details = nextRace && nextRace.slug ? weekendDetails[nextRace.slug] : null
+    var currentSessions = details ? details.sessions : []
     for (var i = 0; i < currentSessions.length; ++i) {
       var session = currentSessions[i]
-      if (Date.parse(session.start) + session.duration * 60000 >= nowMs) return session
+      if (session.officialStatus === "EventCompleted") continue
+      var start = Date.parse(session.start)
+      if (nowMs >= start)
+        return { short: sessionShort(session.name), start: session.start, live: true }
+      if (nowMs < start) return { short: sessionShort(session.name), start: session.start, live: false }
     }
     return null
   }
@@ -63,10 +64,46 @@ BarWidget {
     return Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 12)
   }
 
-  function raceEnd(race) { return dateMs(race.date) + 12 * 60 * 60 * 1000 }
+  function raceEnd(race) {
+    var details = race.slug ? weekendDetails[race.slug] : null
+    var sessions = details ? details.sessions : []
+    if (sessions.length) {
+      var finalSession = sessions[sessions.length - 1]
+      // The official event status, not a guessed race duration, determines
+      // when we advance to the following calendar round.
+      if (finalSession.officialStatus !== "EventCompleted") return Infinity
+      return Date.parse(finalSession.start)
+    }
+    return dateMs(race.date) + 12 * 60 * 60 * 1000
+  }
+
+  function calendarDaysUntil(race) {
+    var today = new Date(nowMs)
+    var todayMs = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
+    var raceMs = Date.UTC(Number(race.date.slice(0, 4)), Number(race.date.slice(5, 7)) - 1, Number(race.date.slice(8, 10)))
+    return Math.max(0, Math.round((raceMs - todayMs) / 86400000))
+  }
+
+  function raceStartMs(race) {
+    var details = race.slug ? weekendDetails[race.slug] : null
+    var sessions = details ? details.sessions : []
+    for (var i = 0; i < sessions.length; ++i) {
+      if (sessions[i].name === "Race") return Date.parse(sessions[i].start)
+    }
+    return 0
+  }
 
   function countdown(race) {
-    var days = Math.ceil(Math.max(0, dateMs(race.date) - nowMs) / 86400000)
+    var start = raceStartMs(race)
+    if (start) {
+      var remaining = start - nowMs
+      if (remaining <= 0) return "live"
+      if (remaining < 86400000) {
+        var minutes = Math.ceil(remaining / 60000)
+        return "in " + Math.floor(minutes / 60) + "h " + (minutes % 60) + "m"
+      }
+    }
+    var days = calendarDaysUntil(race)
     if (days === 0) return "today"
     if (days === 1) return "in 1 day"
     if (days < 14) return "in " + days + " days"
@@ -78,10 +115,18 @@ BarWidget {
 
   function sessionCountdown(session) {
     var start = Date.parse(session.start)
-    if (nowMs >= start && nowMs < start + session.duration * 60000) return "LIVE"
+    if (session.live) return "LIVE"
     var minutes = Math.max(0, Math.ceil((start - nowMs) / 60000))
     if (minutes < 60) return "IN " + minutes + "M"
     return "IN " + Math.floor(minutes / 60) + "H " + (minutes % 60) + "M"
+  }
+
+  function sessionShort(name) {
+    if (name === "Race") return "RACE"
+    if (name.indexOf("Free Practice") === 0) return "FP" + name.replace(/\D/g, "")
+    if (name.indexOf("Hyperpole") === 0) return "HYPER"
+    if (name.indexOf("Qualifying") === 0) return "QUAL"
+    return name.toUpperCase()
   }
 
   function displayDate(iso) {
@@ -111,14 +156,14 @@ BarWidget {
     var seen = ({})
     // Each official race card has its race URL followed by the day and month.
     // Bound the match so a malformed response cannot consume excessive memory.
-    var re = /href="\/en\/race\/([a-z0-9-]+)-(20\d{2})"[\s\S]{0,1400}?<strong[^>]*>\s*(\d{1,2})\s*<\/strong>\s*<small[^>]*>\s*([A-Za-z]{3})/g
+    var re = /href="\/en\/race\/([a-z0-9-]+)-(20\d{2})"[\s\S]{0,500}?flag:([A-Z]{2})[\s\S]{0,900}?<strong[^>]*>\s*(\d{1,2})\s*<\/strong>\s*<small[^>]*>\s*([A-Za-z]{3})/g
     var months = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 }
     var match
     while ((match = re.exec(html)) !== null) {
       if (match[1].indexOf("official-prologue-") === 0) continue
-      var month = months[match[4]]
+      var month = months[match[5]]
       if (month === undefined) continue
-      var day = Number(match[3])
+      var day = Number(match[4])
       if (day < 1 || day > 31) continue
       var date = match[2] + "-" + (month + 1 < 10 ? "0" : "") + (month + 1) + "-" + (day < 10 ? "0" : "") + day
       var key = match[1] + ":" + date
@@ -126,7 +171,7 @@ BarWidget {
       // navigation. Keep one copy of each event.
       if (seen[key]) continue
       seen[key] = true
-      parsed.push({ name: titleFromSlug(match[1]), date: date })
+      parsed.push({ name: titleFromSlug(match[1]), date: date, slug: match[1] + "-" + match[2], countryCode: match[3] })
     }
     parsed.sort(function(a, b) { return a.date.localeCompare(b.date) })
     return parsed
@@ -171,9 +216,74 @@ BarWidget {
       && parsed.lmgt3Teams.length && parsed.lmgt3Drivers.length ? parsed : null
   }
 
-  function refresh() {
+  function time24(value) {
+    var match = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(value)
+    if (!match) return value
+    var hours = Number(match[1]) % 12 + (match[3].toUpperCase() === "PM" ? 12 : 0)
+    return (hours < 10 ? "0" : "") + hours + ":" + match[2]
+  }
+
+  function countryCodeFromAddress(address) {
+    var countries = { USA: "US", JPN: "JP", Japan: "JP", ESP: "ES", Spain: "ES", ITA: "IT", Italy: "IT", QAT: "QA", Qatar: "QA", GBR: "GB", "United Kingdom": "GB", BEL: "BE", Belgium: "BE", FRA: "FR", France: "FR", BRA: "BR", Brazil: "BR", BHR: "BH", Bahrain: "BH" }
+    for (var country in countries) if (address.indexOf(country) >= 0) return countries[country]
+    return ""
+  }
+
+  function parseWeekend(html, race) {
+    var location = /"location"\s*:\s*\{[\s\S]{0,600}?"name"\s*:\s*"([^"]+)"[\s\S]{0,600}?"address"\s*:\s*"([^"]+)"/.exec(html)
+    var trackLength = /Length\s*<span[^>]*>\s*([^<]+)\s*<\/span>/.exec(html)
+    var turns = /<div[^>]*>\s*(\d+)\s+Turns\s*<span/.exec(html)
+    var sessions = []
+    var statuses = ({})
+    var statusRe = /"@id"\s*:\s*"[^"]+#[^"]+",\s*"name"\s*:\s*"([^"]+)"[\s\S]{0,300}?"eventStatus"\s*:\s*"[^"]*\/([^"]+)"/g
+    var statusMatch
+    var suffix = " - " + race.name
+    while ((statusMatch = statusRe.exec(html)) !== null) {
+      var name = statusMatch[1]
+      if (name.slice(-suffix.length) === suffix) name = name.slice(0, -suffix.length)
+      statuses[name] = statusMatch[2]
+    }
+    var re = /<div[^>]*class="fw-bold lh-sm"[^>]*>\s*([^<]+)\s*<\/div>[\s\S]{0,800}?data-local="([^"]+)"[^>]*data-timestamp="(\d+)"/g
+    var match
+    while ((match = re.exec(html)) !== null) {
+      var ms = Number(match[3]) * 1000
+      var sessionName = plainText(match[1])
+      sessions.push({ day: Qt.formatDate(new Date(ms), "ddd d MMM"), name: sessionName, time: time24(match[2]), start: new Date(ms).toISOString(), officialStatus: statuses[sessionName] || "" })
+    }
+    if (!location || !sessions.length) return null
+    var year = race.date.slice(0, 4)
+    var round = 0
+    for (var i = 0; i < races.length; ++i) if (races[i].date.slice(0, 4) === year && races[i].date <= race.date) ++round
+    var address = plainText(location[2])
+    return { venue: plainText(location[1]), location: address, countryCode: countryCodeFromAddress(address), trackLength: trackLength ? plainText(trackLength[1]) : "", turns: turns ? Number(turns[1]) : 0, round: "Round " + round, sessions: sessions }
+  }
+
+  function refreshWeekend() {
+    if (!nextRace || !nextRace.slug || weekendFetch.running) return
+    weekendSlug = nextRace.slug
+    weekendFetch.running = true
+  }
+
+  function refreshCalendarAndStandings() {
     if (!calendarFetch.running) calendarFetch.running = true
     if (!standingsFetch.running) standingsFetch.running = true
+  }
+
+  function weekendRefreshInterval() {
+    var details = nextRace && nextRace.slug ? weekendDetails[nextRace.slug] : null
+    if (!details || !details.sessions || !details.sessions.length) return 3600000
+    for (var i = 0; i < details.sessions.length; ++i) {
+      var session = details.sessions[i]
+      if (session.officialStatus === "EventCompleted") continue
+      // Keep status current from two hours before the next active session.
+      return nowMs >= Date.parse(session.start) - 2 * 60 * 60 * 1000 ? 300000 : 3600000
+    }
+    return 3600000
+  }
+
+  function refresh() {
+    refreshCalendarAndStandings()
+    refreshWeekend()
   }
 
   implicitWidth: button.implicitWidth
@@ -188,6 +298,7 @@ BarWidget {
     panelLoader.item.calendarUpdatedMs = calendarUpdatedMs
     if (standings) panelLoader.item.standings = standings
     panelLoader.item.standingsUpdatedMs = standingsUpdatedMs
+    panelLoader.item.weekendDetails = weekendDetails
     panelLoader.item.anchorItem = button
     panelLoader.item.bar = bar
   }
@@ -197,6 +308,8 @@ BarWidget {
   }
 
   onRacesChanged: injectPanel()
+  onNextRaceChanged: refreshWeekend()
+  onWeekendDetailsChanged: injectPanel()
   onNowMsChanged: injectPanel()
   onCalendarUpdatedMsChanged: injectPanel()
   onStandingsChanged: injectPanel()
@@ -223,7 +336,15 @@ BarWidget {
     running: true
     repeat: true
     triggeredOnStart: true
-    onTriggered: root.refresh()
+    onTriggered: root.refreshCalendarAndStandings()
+  }
+
+  Timer {
+    interval: root.weekendRefreshInterval()
+    running: true
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: root.refreshWeekend()
   }
 
   Process {
@@ -236,6 +357,7 @@ BarWidget {
         if (parsed.length > 0) {
           root.races = parsed
           root.calendarUpdatedMs = Date.now()
+          root.refreshWeekend()
         }
       }
     }
@@ -251,6 +373,23 @@ BarWidget {
         if (parsed) {
           root.standings = parsed
           root.standingsUpdatedMs = Date.now()
+        }
+      }
+    }
+  }
+
+  Process {
+    id: weekendFetch
+    command: ["curl", "-fsSL", "--proto", "=https", "--proto-redir", "=https", "--max-redirs", "3", "--connect-timeout", "8", "--max-time", "15", "--max-filesize", "1048576", "https://www.fiawec.com/en/race/" + root.weekendSlug]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: function() {
+        var race = root.nextRace
+        var parsed = race && race.slug === root.weekendSlug ? root.parseWeekend(text, race) : null
+        if (parsed) {
+          var next = Object.assign({}, root.weekendDetails)
+          next[root.weekendSlug] = parsed
+          root.weekendDetails = next
         }
       }
     }
