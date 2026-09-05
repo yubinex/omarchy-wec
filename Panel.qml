@@ -14,6 +14,7 @@ Panel {
   property double nowMs: Date.now()
   property double calendarUpdatedMs: 0
   property double standingsUpdatedMs: 0
+  property var weekendDetails: ({})
   property string activeTab: "weekend"
   property string standingsTab: "manufacturers"
   property bool showAllStandings: false
@@ -70,10 +71,43 @@ Panel {
     return Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 12)
   }
 
-  function raceEnd(race) { return dateMs(race.date) + 12 * 60 * 60 * 1000 }
+  function raceEnd(race) {
+    var details = race.slug ? weekendDetails[race.slug] : null
+    var sessions = details ? details.sessions : []
+    if (sessions.length) {
+      var finalSession = sessions[sessions.length - 1]
+      if (finalSession.officialStatus !== "EventCompleted") return Infinity
+      return Date.parse(finalSession.start)
+    }
+    return dateMs(race.date) + 12 * 60 * 60 * 1000
+  }
+
+  function calendarDaysUntil(race) {
+    var today = new Date(nowMs)
+    var todayMs = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
+    var raceMs = Date.UTC(Number(race.date.slice(0, 4)), Number(race.date.slice(5, 7)) - 1, Number(race.date.slice(8, 10)))
+    return Math.max(0, Math.round((raceMs - todayMs) / 86400000))
+  }
+
+  function raceStartMs(race) {
+    var sessions = raceDetails(race).sessions || []
+    for (var i = 0; i < sessions.length; ++i) {
+      if (sessions[i].name === "Race") return Date.parse(sessions[i].start)
+    }
+    return 0
+  }
 
   function longCountdown(race) {
-    var days = Math.ceil(Math.max(0, dateMs(race.date) - nowMs) / 86400000)
+    var start = raceStartMs(race)
+    if (start) {
+      var remaining = start - nowMs
+      if (remaining <= 0) return "Race live"
+      if (remaining < 86400000) {
+        var minutes = Math.ceil(remaining / 60000)
+        return "Race in " + twoDigits(Math.floor(minutes / 60)) + "H " + twoDigits(minutes % 60) + "M"
+      }
+    }
+    var days = calendarDaysUntil(race)
     if (days === 0) return "Race day"
     if (days === 1) return "Race in 1 day"
     var weeks = Math.floor(days / 7)
@@ -87,13 +121,10 @@ Panel {
 
   function raceFlag(race) {
     var flags = {
-      "Lone Star Le Mans": "🇺🇸", "6 Hours of Fuji": "🇯🇵", "6 Hours of Barcelona": "🇪🇸",
-      "6 Hours of Monza": "🇮🇹", "Qatar 1812km": "🇶🇦", "6 Hours of Imola": "🇮🇹",
-      "6 Hours of Silverstone": "🇬🇧", "TotalEnergies 6 Hours of Spa-Francorchamps": "🇧🇪",
-      "24 Hours of Le Mans": "🇫🇷", "Rolex 6 Hours of São Paulo": "🇧🇷",
-      "Bapco Energies 8 Hours of Bahrain": "🇧🇭"
+      US: "🇺🇸", JP: "🇯🇵", ES: "🇪🇸", IT: "🇮🇹", QA: "🇶🇦", GB: "🇬🇧",
+      BE: "🇧🇪", FR: "🇫🇷", BR: "🇧🇷", BH: "🇧🇭"
     }
-    return flags[race.name] || ""
+    return flags[race.countryCode || raceDetails(race).countryCode] || ""
   }
 
   function calendarSourceText() {
@@ -131,8 +162,7 @@ Panel {
 
   function sessionStatus(session) {
     var start = Date.parse(session.start)
-    var duration = session.name === "Race" ? 6 * 60 * 60 * 1000 : 90 * 60 * 1000
-    if (nowMs >= start + duration) return "DONE"
+    if (session.officialStatus === "EventCompleted") return "DONE"
     if (nowMs >= start) return "LIVE"
     var minutes = Math.ceil((start - nowMs) / 60000)
     var hours = Math.floor(minutes / 60)
@@ -149,19 +179,9 @@ Panel {
   }
 
   function raceDetails(race) {
-    var details = {
-      "Lone Star Le Mans": { venue: "Circuit of the Americas", location: "Austin, Texas · United States", duration: "6-hour race", round: "Round 6", sessions: [
-        { day: "Fri 4 Sep", name: "Free Practice 1", time: "11:30", start: "2026-09-04T11:30:00-05:00" },
-        { day: "Fri 4 Sep", name: "Free Practice 2", time: "16:00", start: "2026-09-04T16:00:00-05:00" },
-        { day: "Sat 5 Sep", name: "Free Practice 3", time: "11:00", start: "2026-09-05T11:00:00-05:00" },
-        { day: "Sat 5 Sep", name: "Qualifying + Hyperpole", time: "15:00", start: "2026-09-05T15:00:00-05:00" },
-        { day: "Sun 6 Sep", name: "Race", time: "13:00", start: "2026-09-06T13:00:00-05:00" }
-      ] },
-      "6 Hours of Fuji": { venue: "Fuji Speedway", location: "Oyama, Shizuoka · Japan", duration: "6-hour race", round: "Round 7" },
-      "6 Hours of Barcelona": { venue: "Circuit de Barcelona-Catalunya", location: "Montmeló · Spain", duration: "6-hour race", round: "Round 8" },
-      "6 Hours of Monza": { venue: "Autodromo Nazionale Monza", location: "Monza · Italy", duration: "6-hour race", round: "Round 9" }
-    }
-    return details[race.name] || { venue: "FIA World Endurance Championship", location: "Venue details on fiawec.com", duration: "Endurance race", round: "Championship round", sessions: [] }
+    return race && race.slug && weekendDetails[race.slug]
+      ? weekendDetails[race.slug]
+      : { venue: "Loading official event details…", location: "", trackLength: "", turns: 0, round: "", sessions: [] }
   }
 
   function followingRaces() {
@@ -304,9 +324,9 @@ Panel {
         }
         Column {
           spacing: Style.space(4)
-          Text { text: "FORMAT"; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12; font.bold: true }
-          Text { text: root.nextRace ? root.raceDetails(root.nextRace).duration : ""; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 15 }
-          Text { text: root.nextRace ? root.raceDetails(root.nextRace).round : ""; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
+          Text { text: "TRACK"; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12; font.bold: true }
+          Text { text: root.nextRace ? root.raceDetails(root.nextRace).trackLength : ""; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 15 }
+          Text { text: root.nextRace && root.raceDetails(root.nextRace).turns ? root.raceDetails(root.nextRace).turns + " turns" : ""; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
         }
       }
 
