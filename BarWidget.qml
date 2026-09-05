@@ -1,5 +1,7 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell.Io
+import qs.Commons
 import qs.Ui
 
 // A deliberately small, read-only calendar widget. The official WEC home page
@@ -30,6 +32,7 @@ BarWidget {
   property double standingsUpdatedMs: 0
   property var weekendDetails: ({})
   property string weekendSlug: ""
+  readonly property string barDisplay: setting("barDisplay", "full") === "compact" ? "status" : setting("barDisplay", "full")
 
   readonly property var nextRace: {
     for (var i = 0; i < races.length; ++i) {
@@ -58,6 +61,22 @@ BarWidget {
     ? nextSession ? nextRace.name + " · " + nextSession.short + " " + sessionCountdown(nextSession)
       : nextRace.name + " · " + displayDate(nextRace.date) + " · " + countdown(nextRace)
     : "No upcoming WEC race"
+  readonly property string displayText: {
+    if (barDisplay === "icon" || barDisplay === "status") return ""
+    if (vertical) return "WEC"
+    if (barDisplay === "compact") {
+      if (nextSession) return "WEC · " + sessionCountdown(nextSession)
+      return nextRace ? "WEC · " + countdown(nextRace) : "WEC"
+    }
+    return label
+  }
+  readonly property color logoColor: {
+    var foreground = bar ? bar.barForeground : Color.foreground
+    if (barDisplay !== "status" || !nextSession) return foreground
+    if (nextSession.live) return "#df5b5b"
+    if (Date.parse(nextSession.start) - nowMs <= 2 * 60 * 60 * 1000) return "#e0b84f"
+    return foreground
+  }
 
   function dateMs(iso) {
     var parts = String(iso).split("-")
@@ -294,6 +313,8 @@ BarWidget {
   function injectPanel() {
     if (!panelLoader.item) return
     panelLoader.item.races = races
+    panelLoader.item.settings = settings
+    panelLoader.item.hostWidget = root
     panelLoader.item.nowMs = nowMs
     panelLoader.item.calendarUpdatedMs = calendarUpdatedMs
     if (standings) panelLoader.item.standings = standings
@@ -308,6 +329,7 @@ BarWidget {
   }
 
   onRacesChanged: injectPanel()
+  onSettingsChanged: injectPanel()
   onNextRaceChanged: refreshWeekend()
   onWeekendDetailsChanged: injectPanel()
   onNowMsChanged: injectPanel()
@@ -399,9 +421,40 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.vertical ? "WEC" : root.label
+    text: (root.barDisplay === "icon" || root.barDisplay === "status") ? " " : root.displayText
+    labelVisible: root.barDisplay !== "icon" && root.barDisplay !== "status"
+    fixedWidth: (root.barDisplay === "icon" || root.barDisplay === "status") ? Style.space(52) : -1
     tooltipText: root.tooltip
     horizontalMargin: 8.75
+    Rectangle {
+      visible: root.barDisplay === "icon" || root.barDisplay === "status"
+      anchors.centerIn: parent
+      width: Style.space(44)
+      height: Style.space(24)
+      color: "transparent"
+      // Public-domain WEC logo via Wikimedia Commons.
+      Image {
+        id: wecLogo
+        anchors.fill: parent
+        anchors.margins: Style.space(1)
+        source: "https://upload.wikimedia.org/wikipedia/commons/4/44/WEC_Logo.svg"
+        // The source includes a small championship tagline below the mark;
+        // crop it for a legible bar-sized logo.
+        sourceClipRect: Qt.rect(0, 0, 250, 70)
+        fillMode: Image.PreserveAspectFit
+        asynchronous: true
+        visible: false
+      }
+      MultiEffect {
+        anchors.fill: parent
+        anchors.margins: Style.space(1)
+        source: wecLogo
+        colorization: 1.0
+        colorizationColor: root.logoColor
+        brightness: 1.0
+        visible: wecLogo.status === Image.Ready
+      }
+    }
     onPressed: function(button) {
       if (button === Qt.MiddleButton) root.refresh()
       else if (button === Qt.LeftButton) root.togglePanel()

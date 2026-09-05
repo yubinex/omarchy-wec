@@ -10,6 +10,7 @@ Panel {
   manageIpc: false
 
   property var anchorItem: null
+  property var hostWidget: null
   property var races: []
   property double nowMs: Date.now()
   property double calendarUpdatedMs: 0
@@ -18,6 +19,9 @@ Panel {
   property string activeTab: "weekend"
   property string standingsTab: "manufacturers"
   property bool showAllStandings: false
+  readonly property bool showRaceFlags: setting("showRaceFlags", true)
+  readonly property bool showCompletedSessions: setting("showCompletedSessions", true)
+  readonly property string selectedBarDisplay: setting("barDisplay", "full") === "compact" ? "status" : setting("barDisplay", "full")
   // Official FIA WEC classifications, captured on 4 Sep 2026. These remain
   // explicitly labelled as a snapshot until each classification is fetched.
   property var standings: ({
@@ -160,6 +164,22 @@ Panel {
     return "−" + (rows[0].points - entry.points) + " pts"
   }
 
+  function persistSettings(values) {
+    var entry = { id: moduleName }
+    for (var existing in settings) if (existing !== "id") entry[existing] = settings[existing]
+    for (var key in values) entry[key] = values[key]
+    settings = entry
+    if (hostWidget && "settings" in hostWidget) hostWidget.settings = entry
+    if (bar && bar.shell && typeof bar.shell.updateEntryInline === "function")
+      bar.shell.updateEntryInline(moduleName, entry)
+  }
+
+  function visibleSessions(race) {
+    var sessions = raceDetails(race).sessions || []
+    if (showCompletedSessions) return sessions
+    return sessions.filter(function(session) { return session.officialStatus !== "EventCompleted" })
+  }
+
   function sessionStatus(session) {
     var start = Date.parse(session.start)
     if (session.officialStatus === "EventCompleted") return "DONE"
@@ -226,7 +246,7 @@ Panel {
       spacing: Style.space(12)
 
       Text {
-        text: "FIA WORLD ENDURANCE CHAMPIONSHIP"
+        text: root.activeTab === "settings" ? "WEC PLUGIN" : "FIA WORLD ENDURANCE CHAMPIONSHIP"
         color: root.dim
         font.family: root.bar ? root.bar.fontFamily : Style.font.family
         font.pixelSize: 12
@@ -235,7 +255,8 @@ Panel {
 
       Row {
         width: parent.width
-        readonly property real flagAreaWidth: Math.min(Style.space(128), width * 0.28)
+        visible: root.activeTab !== "settings"
+        readonly property real flagAreaWidth: root.showRaceFlags ? Math.min(Style.space(128), width * 0.28) : 0
         Text {
           width: parent.width - parent.flagAreaWidth
           text: root.nextRace ? root.nextRace.name : "No upcoming race"
@@ -249,6 +270,7 @@ Panel {
           width: parent.flagAreaWidth
           height: parent.height
           text: root.nextRace ? root.raceFlag(root.nextRace) : ""
+          visible: root.showRaceFlags
           horizontalAlignment: Text.AlignRight
           verticalAlignment: Text.AlignVCenter
           font.pixelSize: Math.min(Style.space(72), parent.flagAreaWidth * 0.72)
@@ -256,7 +278,7 @@ Panel {
       }
 
       Text {
-        visible: root.nextRace !== null
+        visible: root.activeTab !== "settings" && root.nextRace !== null
         text: root.nextRace ? root.dateText(root.nextRace) : ""
         color: root.dim
         font.family: root.bar ? root.bar.fontFamily : Style.font.family
@@ -264,7 +286,7 @@ Panel {
       }
 
       Text {
-        visible: root.nextRace !== null
+        visible: root.activeTab !== "settings" && root.nextRace !== null
         text: root.nextRace ? root.longCountdown(root.nextRace) : ""
         color: root.fg
         font.family: root.bar ? root.bar.fontFamily : Style.font.family
@@ -306,6 +328,16 @@ Panel {
             }
           }
         }
+
+        PanelActionButton {
+          iconText: "󰒓"
+          tooltipText: "Settings"
+          foreground: root.dim
+          fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+          size: Style.space(28)
+          bordered: true
+          onClicked: root.activeTab = "settings"
+        }
       }
 
       PanelSeparator { width: parent.width; visible: root.activeTab === "weekend" }
@@ -338,7 +370,7 @@ Panel {
         spacing: Style.space(7)
         Text { text: "WEEKEND SCHEDULE · TRACK TIME"; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12; font.bold: true }
         Repeater {
-          model: root.nextRace ? root.raceDetails(root.nextRace).sessions : []
+          model: root.nextRace ? root.visibleSessions(root.nextRace) : []
           delegate: Row {
             required property var modelData
             width: parent.width
@@ -377,12 +409,13 @@ Panel {
             font.pixelSize: 14
           }
           Text {
-            width: Style.space(28)
+            width: root.showRaceFlags ? Style.space(28) : 0
             text: root.raceFlag(modelData)
+            visible: root.showRaceFlags
             font.pixelSize: 16
           }
           Text {
-            width: parent.width - Style.space(148)
+            width: parent.width - Style.space(120) - (root.showRaceFlags ? Style.space(28) : 0)
             text: modelData.name
             color: root.fg
             elide: Text.ElideRight
@@ -545,6 +578,130 @@ Panel {
               anchors.fill: parent
               cursorShape: Qt.PointingHandCursor
               onClicked: if (root.bar) root.bar.run("xdg-open https://www.fiawec.com/en/page/manufacturers-classification")
+            }
+          }
+        }
+      }
+
+      Column {
+        width: parent.width
+        visible: root.activeTab === "settings"
+        spacing: Style.space(14)
+
+        Row {
+          spacing: Style.space(8)
+          PanelActionButton {
+            iconText: "󰅁"
+            tooltipText: "Back to race weekend"
+            foreground: root.fg
+            fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+            size: Style.space(28)
+            bordered: true
+            onClicked: root.activeTab = "weekend"
+          }
+          Text {
+            height: Style.space(28)
+            verticalAlignment: Text.AlignVCenter
+            text: "SETTINGS"
+            color: root.fg
+            font.family: root.bar ? root.bar.fontFamily : Style.font.family
+            font.pixelSize: 17
+            font.bold: true
+          }
+        }
+
+        Text {
+          text: "Preferences are saved to your Omarchy bar layout."
+          color: root.dim
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.pixelSize: 13
+        }
+
+        PanelSeparator { width: parent.width }
+
+        Row {
+          width: parent.width
+          height: Style.space(42)
+          Column {
+            width: parent.width - flagsToggle.width
+            anchors.verticalCenter: parent.verticalCenter
+            Text { text: "SHOW RACE FLAGS"; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: true }
+            Text { text: "Display event-country flags in the weekend view."; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12 }
+          }
+          Rectangle {
+            id: flagsToggle
+            width: Style.space(52)
+            height: Style.space(25)
+            anchors.verticalCenter: parent.verticalCenter
+            radius: Style.space(3)
+            color: root.showRaceFlags ? Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.16) : "transparent"
+            border.width: 1
+            border.color: root.showRaceFlags ? root.fg : root.dim
+            Text { anchors.centerIn: parent; text: root.showRaceFlags ? "ON" : "OFF"; color: root.showRaceFlags ? root.fg : root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 11; font.bold: true }
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.persistSettings({ showRaceFlags: !root.showRaceFlags }) }
+          }
+        }
+
+        Row {
+          width: parent.width
+          height: Style.space(42)
+          Column {
+            width: parent.width - completedToggle.width
+            anchors.verticalCenter: parent.verticalCenter
+            Text { text: "SHOW COMPLETED SESSIONS"; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: true }
+            Text { text: "Keep completed practice and qualifying sessions visible."; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12 }
+          }
+          Rectangle {
+            id: completedToggle
+            width: Style.space(52)
+            height: Style.space(25)
+            anchors.verticalCenter: parent.verticalCenter
+            radius: Style.space(3)
+            color: root.showCompletedSessions ? Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.16) : "transparent"
+            border.width: 1
+            border.color: root.showCompletedSessions ? root.fg : root.dim
+            Text { anchors.centerIn: parent; text: root.showCompletedSessions ? "ON" : "OFF"; color: root.showCompletedSessions ? root.fg : root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 11; font.bold: true }
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.persistSettings({ showCompletedSessions: !root.showCompletedSessions }) }
+          }
+        }
+
+        Row {
+          width: parent.width
+          height: Style.space(42)
+          Column {
+            width: parent.width - displayChoices.width - Style.space(12)
+            anchors.verticalCenter: parent.verticalCenter
+            Text { text: "BAR DISPLAY"; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: true }
+            Text { text: "Choose the information shown in the bar."; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12 }
+          }
+          Row {
+            id: displayChoices
+            spacing: Style.space(5)
+            Repeater {
+              model: [
+                { id: "full", label: "FULL" },
+                { id: "icon", label: "LOGO" },
+                { id: "status", label: "ALERT" }
+              ]
+              delegate: Rectangle {
+                required property var modelData
+                implicitWidth: displayLabel.implicitWidth + Style.space(12)
+                implicitHeight: Style.space(25)
+                radius: Style.space(3)
+                color: root.selectedBarDisplay === modelData.id ? Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.16) : "transparent"
+                border.width: 1
+                border.color: root.selectedBarDisplay === modelData.id ? root.fg : root.dim
+                Text {
+                  id: displayLabel
+                  anchors.centerIn: parent
+                  text: modelData.label
+                  color: root.selectedBarDisplay === modelData.id ? root.fg : root.dim
+                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  font.pixelSize: 11
+                  font.bold: true
+                }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.persistSettings({ barDisplay: modelData.id }) }
+              }
             }
           }
         }
