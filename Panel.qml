@@ -121,7 +121,12 @@ Panel {
       + (remainder ? " and " + remainder + " day" + (remainder === 1 ? "" : "s") : "")
   }
 
-  function dateText(race) { return Qt.formatDate(new Date(dateMs(race.date)), "dddd, d MMMM yyyy") }
+  function dateText(race) {
+    var start = raceStartMs(race)
+    return Qt.formatDate(new Date(start || dateMs(race.date)), "dddd, d MMMM yyyy")
+  }
+
+  function localTimeZone() { return Qt.formatDateTime(new Date(), "t") }
 
   function raceFlag(race) {
     var flags = {
@@ -368,16 +373,16 @@ Panel {
         width: parent.width
         visible: root.activeTab === "weekend" && root.nextRace && root.raceDetails(root.nextRace).sessions.length > 0
         spacing: Style.space(7)
-        Text { text: "WEEKEND SCHEDULE · TRACK TIME"; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12; font.bold: true }
+        Text { text: "WEEKEND SCHEDULE · LOCAL TIME (" + root.localTimeZone() + ")"; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12; font.bold: true }
         Repeater {
           model: root.nextRace ? root.visibleSessions(root.nextRace) : []
           delegate: Row {
             required property var modelData
             width: parent.width
             opacity: root.sessionStatus(modelData) === "DONE" ? 0.45 : 1.0
-            Text { width: Style.space(100); text: modelData.day; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
+            Text { width: Style.space(100); text: Qt.formatDate(new Date(modelData.start), "ddd d MMM"); color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
             Text { width: parent.width - Style.space(230); text: modelData.name; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
-            Text { width: Style.space(60); text: modelData.time; horizontalAlignment: Text.AlignRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: modelData.name === "Race" }
+            Text { width: Style.space(60); text: Qt.formatTime(new Date(modelData.start), "HH:mm"); horizontalAlignment: Text.AlignRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: modelData.name === "Race" }
             Text { width: Style.space(70); text: root.sessionStatus(modelData); horizontalAlignment: Text.AlignRight; color: root.sessionStatusColor(modelData); font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12; font.bold: true }
           }
         }
