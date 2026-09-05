@@ -146,7 +146,9 @@ BarWidget {
       var cells = []
       var cellRe = /<td\b[^>]*>([\s\S]*?)<\/td>/g
       var cell
-      while ((cell = cellRe.exec(rows[i])) !== null) cells.push(plainText(cell[1]))
+      while ((cell = cellRe.exec(rows[i])) !== null) {
+        cells.push(plainText(cell[1]))
+      }
       var position = Number(cells[0])
       var name = cells[nameCell]
       var points = Number(cells[cells.length - 1])

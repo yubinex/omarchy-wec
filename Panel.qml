@@ -16,6 +16,7 @@ Panel {
   property double standingsUpdatedMs: 0
   property string activeTab: "weekend"
   property string standingsTab: "manufacturers"
+  property bool showAllStandings: false
   // Official FIA WEC classifications, captured on 4 Sep 2026. These remain
   // explicitly labelled as a snapshot until each classification is fetched.
   property var standings: ({
@@ -104,6 +105,17 @@ Panel {
     if (standingsUpdatedMs <= 0) return "Official FIA WEC standings · snapshot: 4 Sep 2026"
     return "Official FIA WEC standings · updated "
       + Qt.formatDateTime(new Date(standingsUpdatedMs), "d MMM, HH:mm")
+  }
+
+  function visibleStandings() {
+    var rows = standings[standingsTab] || []
+    return showAllStandings ? rows : rows.slice(0, 10)
+  }
+
+  function pointsGap(entry) {
+    var rows = standings[standingsTab] || []
+    if (entry.position === 1 || !rows.length) return ""
+    return "−" + (rows[0].points - entry.points) + " pts"
   }
 
   function sessionStatus(session) {
@@ -323,12 +335,29 @@ Panel {
 
       PanelSeparator { width: parent.width; visible: root.activeTab === "weekend" }
 
-      Text {
+      Row {
+        width: parent.width
         visible: root.activeTab === "weekend"
-        text: root.calendarSourceText()
-        color: root.dim
-        font.family: root.bar ? root.bar.fontFamily : Style.font.family
-        font.pixelSize: 12
+        Text {
+          width: parent.width - calendarLink.implicitWidth - Style.space(12)
+          text: root.calendarSourceText()
+          color: root.dim
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.pixelSize: 12
+        }
+        Text {
+          id: calendarLink
+          text: "OPEN FIA WEC ↗"
+          color: root.fg
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.pixelSize: 12
+          font.bold: true
+          MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: if (root.bar) root.bar.run("xdg-open https://www.fiawec.com/en/")
+          }
+        }
       }
 
       Column {
@@ -363,7 +392,13 @@ Panel {
                 font.pixelSize: 11
                 font.bold: true
               }
-              MouseArea { anchors.fill: parent; onClicked: root.standingsTab = modelData.id }
+              MouseArea {
+                anchors.fill: parent
+                onClicked: {
+                  root.standingsTab = modelData.id
+                  root.showAllStandings = false
+                }
+              }
             }
           }
         }
@@ -386,31 +421,73 @@ Panel {
         PanelSeparator { width: parent.width }
 
         Repeater {
-          model: root.standings[root.standingsTab]
+          model: root.visibleStandings()
 
           delegate: Row {
             required property var modelData
             width: parent.width
-            height: modelData.detail ? Style.space(38) : Style.space(30)
+            height: Style.space(38)
 
-            Text { width: Style.space(46); text: "P" + modelData.position; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
+            Text { width: Style.space(46); height: parent.height; text: "P" + modelData.position; verticalAlignment: Text.AlignVCenter; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
             Column {
               width: parent.width - Style.space(130)
               anchors.verticalCenter: parent.verticalCenter
               Text { width: parent.width; text: modelData.name; elide: Text.ElideRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 15; font.bold: modelData.position === 1 }
               Text { visible: Boolean(modelData.detail); text: modelData.detail || ""; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12 }
             }
-            Text { width: Style.space(84); text: modelData.points + " pts"; horizontalAlignment: Text.AlignRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: true }
+            Column {
+              width: Style.space(84)
+              anchors.verticalCenter: parent.verticalCenter
+              Text { width: parent.width; text: modelData.points + " pts"; horizontalAlignment: Text.AlignRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: true }
+              Text { width: parent.width; text: root.pointsGap(modelData); horizontalAlignment: Text.AlignRight; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 11 }
+            }
           }
+        }
+
+        Rectangle {
+          visible: (root.standings[root.standingsTab] || []).length > 10
+          implicitWidth: moreLabel.implicitWidth + Style.space(18)
+          implicitHeight: Style.space(27)
+          radius: Style.space(3)
+          color: "transparent"
+          border.width: 1
+          border.color: root.dim
+          Text {
+            id: moreLabel
+            anchors.centerIn: parent
+            text: root.showAllStandings ? "SHOW TOP 10" : "SHOW " + ((root.standings[root.standingsTab] || []).length - 10) + " MORE"
+            color: root.dim
+            font.family: root.bar ? root.bar.fontFamily : Style.font.family
+            font.pixelSize: 11
+            font.bold: true
+          }
+          MouseArea { anchors.fill: parent; onClicked: root.showAllStandings = !root.showAllStandings }
         }
 
         PanelSeparator { width: parent.width }
 
-        Text {
-          text: root.standingsSourceText()
-          color: root.dim
-          font.family: root.bar ? root.bar.fontFamily : Style.font.family
-          font.pixelSize: 12
+        Row {
+          width: parent.width
+          Text {
+            width: parent.width - standingsLink.implicitWidth - Style.space(12)
+            text: root.standingsSourceText()
+            color: root.dim
+            font.family: root.bar ? root.bar.fontFamily : Style.font.family
+            font.pixelSize: 12
+          }
+          Text {
+            id: standingsLink
+            text: "OPEN FIA WEC ↗"
+            color: root.fg
+            font.family: root.bar ? root.bar.fontFamily : Style.font.family
+            font.pixelSize: 12
+            font.bold: true
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              onClicked: if (root.bar) root.bar.run("xdg-open https://www.fiawec.com/en/page/manufacturers-classification")
+            }
+          }
         }
       }
     }
