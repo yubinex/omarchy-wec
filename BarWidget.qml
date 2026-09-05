@@ -24,6 +24,10 @@ BarWidget {
     { name: "8 Hours of Bahrain", date: "2027-11-06" }
   ]
   property double nowMs: Date.now()
+  // Set only after a successful parse of the official calendar response.
+  property double calendarUpdatedMs: 0
+  property var standings: null
+  property double standingsUpdatedMs: 0
   property var currentSessions: [
     { short: "FP1", start: "2026-09-04T11:30:00-05:00", duration: 90 },
     { short: "FP2", start: "2026-09-04T16:00:00-05:00", duration: 90 },
@@ -128,9 +132,48 @@ BarWidget {
     return parsed
   }
 
+  function plainText(html) {
+    return String(html).replace(/<[^>]*>/g, " ").replace(/&amp;/g, "&")
+      .replace(/&#x27;/g, "'").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim()
+  }
+
+  function parseStandingsTable(html, tableId, nameCell, detailCell) {
+    var section = new RegExp('id="' + tableId + '"[\\s\\S]*?<tbody>([\\s\\S]*?)</tbody>').exec(html)
+    if (!section) return []
+    var rows = section[1].match(/<tr>[\s\S]*?<\/tr>/g) || []
+    var parsed = []
+    for (var i = 0; i < rows.length; ++i) {
+      var cells = []
+      var cellRe = /<td\b[^>]*>([\s\S]*?)<\/td>/g
+      var cell
+      while ((cell = cellRe.exec(rows[i])) !== null) {
+        cells.push(plainText(cell[1]))
+      }
+      var position = Number(cells[0])
+      var name = cells[nameCell]
+      var points = Number(cells[cells.length - 1])
+      if (!position || !name || isNaN(points)) continue
+      var entry = { position: position, name: name, points: points }
+      if (detailCell >= 0 && cells[detailCell]) entry.detail = cells[detailCell]
+      parsed.push(entry)
+    }
+    return parsed
+  }
+
+  function parseStandings(html) {
+    var parsed = {
+      manufacturers: parseStandingsTable(html, "results-65", 1, -1),
+      hypercarDrivers: parseStandingsTable(html, "results-55", 3, 2),
+      lmgt3Teams: parseStandingsTable(html, "results-73", 3, 2),
+      lmgt3Drivers: parseStandingsTable(html, "results-72", 3, 2)
+    }
+    return parsed.manufacturers.length && parsed.hypercarDrivers.length
+      && parsed.lmgt3Teams.length && parsed.lmgt3Drivers.length ? parsed : null
+  }
+
   function refresh() {
-    if (calendarFetch.running) return
-    calendarFetch.running = true
+    if (!calendarFetch.running) calendarFetch.running = true
+    if (!standingsFetch.running) standingsFetch.running = true
   }
 
   implicitWidth: button.implicitWidth
@@ -142,6 +185,9 @@ BarWidget {
     if (!panelLoader.item) return
     panelLoader.item.races = races
     panelLoader.item.nowMs = nowMs
+    panelLoader.item.calendarUpdatedMs = calendarUpdatedMs
+    if (standings) panelLoader.item.standings = standings
+    panelLoader.item.standingsUpdatedMs = standingsUpdatedMs
     panelLoader.item.anchorItem = button
     panelLoader.item.bar = bar
   }
@@ -152,6 +198,9 @@ BarWidget {
 
   onRacesChanged: injectPanel()
   onNowMsChanged: injectPanel()
+  onCalendarUpdatedMsChanged: injectPanel()
+  onStandingsChanged: injectPanel()
+  onStandingsUpdatedMsChanged: injectPanel()
   onBarChanged: injectPanel()
 
   Loader {
@@ -184,7 +233,25 @@ BarWidget {
       waitForEnd: true
       onStreamFinished: function() {
         var parsed = root.parseCalendar(text)
-        if (parsed.length > 0) root.races = parsed
+        if (parsed.length > 0) {
+          root.races = parsed
+          root.calendarUpdatedMs = Date.now()
+        }
+      }
+    }
+  }
+
+  Process {
+    id: standingsFetch
+    command: ["curl", "-fsSL", "--proto", "=https", "--proto-redir", "=https", "--max-redirs", "3", "--connect-timeout", "8", "--max-time", "15", "--max-filesize", "1048576", "https://www.fiawec.com/en/page/manufacturers-classification"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: function() {
+        var parsed = root.parseStandings(text)
+        if (parsed) {
+          root.standings = parsed
+          root.standingsUpdatedMs = Date.now()
+        }
       }
     }
   }
