@@ -85,6 +85,17 @@ Panel {
 
   function dateText(race) { return Qt.formatDate(new Date(dateMs(race.date)), "dddd, d MMMM yyyy") }
 
+  function raceFlag(race) {
+    var flags = {
+      "Lone Star Le Mans": "🇺🇸", "6 Hours of Fuji": "🇯🇵", "6 Hours of Barcelona": "🇪🇸",
+      "6 Hours of Monza": "🇮🇹", "Qatar 1812km": "🇶🇦", "6 Hours of Imola": "🇮🇹",
+      "6 Hours of Silverstone": "🇬🇧", "TotalEnergies 6 Hours of Spa-Francorchamps": "🇧🇪",
+      "24 Hours of Le Mans": "🇫🇷", "Rolex 6 Hours of São Paulo": "🇧🇷",
+      "Bapco Energies 8 Hours of Bahrain": "🇧🇭"
+    }
+    return flags[race.name] || ""
+  }
+
   function calendarSourceText() {
     if (calendarUpdatedMs <= 0) return "Official FIA WEC calendar · bundled schedule"
     return "Official FIA WEC calendar · updated "
@@ -124,9 +135,17 @@ Panel {
     if (nowMs >= start + duration) return "DONE"
     if (nowMs >= start) return "LIVE"
     var minutes = Math.ceil((start - nowMs) / 60000)
-    if (minutes < 60) return "IN " + minutes + "M"
     var hours = Math.floor(minutes / 60)
-    return "IN " + hours + "H " + (minutes % 60) + "M"
+    return "IN " + twoDigits(hours) + "H " + twoDigits(minutes % 60) + "M"
+  }
+
+  function twoDigits(value) { return value < 10 ? "0" + value : String(value) }
+
+  function sessionStatusColor(session) {
+    var minutes = Math.ceil((Date.parse(session.start) - nowMs) / 60000)
+    if (sessionStatus(session) === "LIVE") return "#df5b5b"
+    if (minutes >= 0 && minutes <= 120) return "#e0b84f"
+    return root.dim
   }
 
   function raceDetails(race) {
@@ -194,12 +213,26 @@ Panel {
         font.bold: true
       }
 
-      Text {
-        text: root.nextRace ? root.nextRace.name : "No upcoming race"
-        color: root.fg
-        font.family: root.bar ? root.bar.fontFamily : Style.font.family
-        font.pixelSize: 24
-        font.bold: true
+      Row {
+        width: parent.width
+        readonly property real flagAreaWidth: Math.min(Style.space(128), width * 0.28)
+        Text {
+          width: parent.width - parent.flagAreaWidth
+          text: root.nextRace ? root.nextRace.name : "No upcoming race"
+          elide: Text.ElideRight
+          color: root.fg
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.pixelSize: 24
+          font.bold: true
+        }
+        Text {
+          width: parent.flagAreaWidth
+          height: parent.height
+          text: root.nextRace ? root.raceFlag(root.nextRace) : ""
+          horizontalAlignment: Text.AlignRight
+          verticalAlignment: Text.AlignVCenter
+          font.pixelSize: Math.min(Style.space(72), parent.flagAreaWidth * 0.72)
+        }
       }
 
       Text {
@@ -289,10 +322,11 @@ Panel {
           delegate: Row {
             required property var modelData
             width: parent.width
+            opacity: root.sessionStatus(modelData) === "DONE" ? 0.45 : 1.0
             Text { width: Style.space(100); text: modelData.day; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
             Text { width: parent.width - Style.space(230); text: modelData.name; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
             Text { width: Style.space(60); text: modelData.time; horizontalAlignment: Text.AlignRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: modelData.name === "Race" }
-            Text { width: Style.space(70); text: root.sessionStatus(modelData); horizontalAlignment: Text.AlignRight; color: root.sessionStatus(modelData) === "LIVE" ? "#e0b84f" : root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12; font.bold: true }
+            Text { width: Style.space(70); text: root.sessionStatus(modelData); horizontalAlignment: Text.AlignRight; color: root.sessionStatusColor(modelData); font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12; font.bold: true }
           }
         }
       }
@@ -323,7 +357,12 @@ Panel {
             font.pixelSize: 14
           }
           Text {
-            width: parent.width - Style.space(120)
+            width: Style.space(28)
+            text: root.raceFlag(modelData)
+            font.pixelSize: 16
+          }
+          Text {
+            width: parent.width - Style.space(148)
             text: modelData.name
             color: root.fg
             elide: Text.ElideRight
