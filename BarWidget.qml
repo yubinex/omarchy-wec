@@ -32,7 +32,10 @@ BarWidget {
   property double standingsUpdatedMs: 0
   property var weekendDetails: ({})
   property string weekendSlug: ""
-  readonly property string barDisplay: setting("barDisplay", "full") === "compact" ? "status" : setting("barDisplay", "full")
+  // This widget has one purpose-built bar presentation: the WEC mark with
+  // the nearby session state. Older per-layout display preferences are
+  // intentionally ignored.
+  readonly property string barDisplay: "status"
 
   readonly property var nextRace: {
     for (var i = 0; i < races.length; ++i) {
@@ -70,12 +73,20 @@ BarWidget {
     }
     return label
   }
+  // Match the F1 widget's at-a-glance event treatment: expose an imminent
+  // session beside the mark, and make both the mark and LIVE state red.
+  readonly property bool sessionLive: nextSession && nextSession.live
+  readonly property string statusText: {
+    if (barDisplay !== "status" || !nextSession) return ""
+    if (sessionLive) return "● LIVE"
+    var minutes = Math.ceil((Date.parse(nextSession.start) - nowMs) / 60000)
+    if (minutes < 0 || minutes > 120) return ""
+    if (minutes < 60) return nextSession.short + " " + minutes + "m"
+    return nextSession.short + " " + Math.floor(minutes / 60) + "h " + (minutes % 60) + "m"
+  }
   readonly property color logoColor: {
     var foreground = bar ? bar.barForeground : Color.foreground
-    if (barDisplay !== "status" || !nextSession) return foreground
-    if (nextSession.live) return "#df5b5b"
-    if (Date.parse(nextSession.start) - nowMs <= 2 * 60 * 60 * 1000) return "#e0b84f"
-    return foreground
+    return sessionLive ? "#e10600" : foreground
   }
 
   function dateMs(iso) {
@@ -423,36 +434,53 @@ BarWidget {
     bar: root.bar
     text: (root.barDisplay === "icon" || root.barDisplay === "status") ? " " : root.displayText
     labelVisible: root.barDisplay !== "icon" && root.barDisplay !== "status"
-    fixedWidth: (root.barDisplay === "icon" || root.barDisplay === "status") ? Style.space(52) : -1
+    hasVisualContent: root.barDisplay === "status"
+    fixedWidth: root.barDisplay === "status"
+      ? Style.space(52) + (root.statusText.length > 0 ? statusLabel.implicitWidth + Style.space(8) : 0)
+      : root.barDisplay === "icon" ? Style.space(52) : -1
+    active: root.sessionLive
     tooltipText: root.tooltip
     horizontalMargin: 8.75
-    Rectangle {
+    Row {
       visible: root.barDisplay === "icon" || root.barDisplay === "status"
       anchors.centerIn: parent
-      width: Style.space(44)
-      height: Style.space(24)
-      color: "transparent"
-      // Public-domain WEC logo via Wikimedia Commons.
-      Image {
-        id: wecLogo
-        anchors.fill: parent
-        anchors.margins: Style.space(1)
-        source: "https://upload.wikimedia.org/wikipedia/commons/4/44/WEC_Logo.svg"
-        // The source includes a small championship tagline below the mark;
-        // crop it for a legible bar-sized logo.
-        sourceClipRect: Qt.rect(0, 0, 250, 70)
-        fillMode: Image.PreserveAspectFit
-        asynchronous: true
-        visible: false
+      spacing: Style.space(6)
+      Rectangle {
+        width: Style.space(44)
+        height: Style.space(24)
+        color: "transparent"
+        // Public-domain WEC logo via Wikimedia Commons.
+        Image {
+          id: wecLogo
+          anchors.fill: parent
+          anchors.margins: Style.space(1)
+          source: "https://upload.wikimedia.org/wikipedia/commons/4/44/WEC_Logo.svg"
+          // The source includes a small championship tagline below the mark;
+          // crop it for a legible bar-sized logo.
+          sourceClipRect: Qt.rect(0, 0, 250, 70)
+          fillMode: Image.PreserveAspectFit
+          asynchronous: true
+          visible: false
+        }
+        MultiEffect {
+          anchors.fill: parent
+          anchors.margins: Style.space(1)
+          source: wecLogo
+          colorization: 1.0
+          colorizationColor: root.logoColor
+          brightness: 1.0
+          visible: wecLogo.status === Image.Ready
+        }
       }
-      MultiEffect {
-        anchors.fill: parent
-        anchors.margins: Style.space(1)
-        source: wecLogo
-        colorization: 1.0
-        colorizationColor: root.logoColor
-        brightness: 1.0
-        visible: wecLogo.status === Image.Ready
+      Text {
+        id: statusLabel
+        anchors.verticalCenter: parent.verticalCenter
+        visible: root.statusText.length > 0
+        text: root.statusText
+        color: root.sessionLive ? "#e10600" : button.foreground
+        font.family: button.fontFamily
+        font.pixelSize: Style.font.bodySmall
+        font.bold: true
       }
     }
     onPressed: function(button) {
