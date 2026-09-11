@@ -21,7 +21,6 @@ Panel {
   property bool showAllStandings: false
   readonly property bool showRaceFlags: setting("showRaceFlags", true)
   readonly property bool showCompletedSessions: setting("showCompletedSessions", true)
-  readonly property string selectedBarDisplay: setting("barDisplay", "full") === "compact" ? "status" : setting("barDisplay", "full")
   // Official FIA WEC classifications, captured on 4 Sep 2026. These remain
   // explicitly labelled as a snapshot until each classification is fetched.
   property var standings: ({
@@ -62,11 +61,26 @@ Panel {
   })
   readonly property color fg: bar ? bar.foreground : Color.foreground
   readonly property color dim: Qt.darker(fg, 1.55)
+  readonly property bool compactLayout: popup.contentWidth < Style.space(400)
 
   readonly property var nextRace: {
     for (var i = 0; i < races.length; ++i) {
       if (raceEnd(races[i]) >= nowMs) return races[i]
     }
+    return null
+  }
+  readonly property var featuredSession: {
+    if (!nextRace) return null
+    var sessions = raceDetails(nextRace).sessions || []
+    for (var i = 0; i < sessions.length; ++i)
+      if (sessions[i].officialStatus !== "EventCompleted") return sessions[i]
+    return null
+  }
+  readonly property var raceSession: {
+    if (!nextRace) return null
+    var sessions = raceDetails(nextRace).sessions || []
+    for (var i = 0; i < sessions.length; ++i)
+      if (sessions[i].name === "Race") return sessions[i]
     return null
   }
 
@@ -185,13 +199,29 @@ Panel {
     return sessions.filter(function(session) { return session.officialStatus !== "EventCompleted" })
   }
 
+  function visibleScheduleDays(race) {
+    var sessions = visibleSessions(race)
+    var days = []
+    for (var i = 0; i < sessions.length; ++i) {
+      var session = sessions[i]
+      var key = Qt.formatDate(new Date(session.start), "yyyy-MM-dd")
+      if (!days.length || days[days.length - 1].key !== key)
+        days.push({ key: key, label: Qt.formatDate(new Date(session.start), "dddd · d MMMM"), sessions: [] })
+      days[days.length - 1].sessions.push(session)
+    }
+    return days
+  }
+
   function sessionStatus(session) {
     var start = Date.parse(session.start)
     if (session.officialStatus === "EventCompleted") return "DONE"
     if (nowMs >= start) return "LIVE"
     var minutes = Math.ceil((start - nowMs) / 60000)
-    var hours = Math.floor(minutes / 60)
-    return "IN " + twoDigits(hours) + "H " + twoDigits(minutes % 60) + "M"
+    // Match the concise timetable language: only show a short relative
+    // marker during the active weekend, never a multi-day wall of numbers.
+    if (minutes > 48 * 60) return ""
+    if (minutes >= 60) return Math.ceil(minutes / 60) + "h"
+    return Math.max(0, minutes) + "m"
   }
 
   function twoDigits(value) { return value < 10 ? "0" + value : String(value) }
@@ -228,76 +258,77 @@ Panel {
     owner: root
     bar: root.bar
     open: root.opened
-    centerOnBar: true
-    contentWidth: Style.space(520)
-    // KeyboardPanel accounts for the display work area. It uses natural size
-    // until needed content would exceed the available screen height.
-    contentHeight: popup.fittedContentHeight(content.implicitHeight + Style.space(48))
+    // Anchor the popup to the WEC widget rather than the middle of the bar.
+    centerOnBar: false
+    // Let KeyboardPanel constrain the card to the active display rather than
+    // merely clamping a fixed-width card's position on narrow outputs.
+    contentWidth: popup.fittedContentWidth(Style.space(520))
+    contentHeight: popup.fittedContentHeight(content.implicitHeight)
 
     Flickable {
       id: scroll
       anchors.fill: parent
       contentWidth: width
-      contentHeight: content.implicitHeight + Style.space(48)
+      contentHeight: content.implicitHeight
       clip: true
       boundsBehavior: Flickable.StopAtBounds
       interactive: contentHeight > height
 
       Column {
       id: content
-      x: Style.space(24)
-      y: Style.space(24)
-      width: scroll.width - Style.space(48)
+       width: scroll.width
       spacing: Style.space(12)
 
-      Text {
-        text: root.activeTab === "settings" ? "WEC PLUGIN" : "FIA WORLD ENDURANCE CHAMPIONSHIP"
+       Text {
+         visible: root.activeTab === "settings"
+         text: "WEC PLUGIN"
         color: root.dim
         font.family: root.bar ? root.bar.fontFamily : Style.font.family
         font.pixelSize: 12
         font.bold: true
       }
 
-      Row {
-        width: parent.width
-        visible: root.activeTab !== "settings"
-        readonly property real flagAreaWidth: root.showRaceFlags ? Math.min(Style.space(128), width * 0.28) : 0
-        Text {
-          width: parent.width - parent.flagAreaWidth
-          text: root.nextRace ? root.nextRace.name : "No upcoming race"
-          elide: Text.ElideRight
-          color: root.fg
-          font.family: root.bar ? root.bar.fontFamily : Style.font.family
-          font.pixelSize: 24
-          font.bold: true
-        }
-        Text {
-          width: parent.flagAreaWidth
-          height: parent.height
-          text: root.nextRace ? root.raceFlag(root.nextRace) : ""
-          visible: root.showRaceFlags
-          horizontalAlignment: Text.AlignRight
-          verticalAlignment: Text.AlignVCenter
-          font.pixelSize: Math.min(Style.space(72), parent.flagAreaWidth * 0.72)
-        }
-      }
-
-      Text {
-        visible: root.activeTab !== "settings" && root.nextRace !== null
-        text: root.nextRace ? root.dateText(root.nextRace) : ""
-        color: root.dim
-        font.family: root.bar ? root.bar.fontFamily : Style.font.family
-        font.pixelSize: 15
-      }
-
-      Text {
-        visible: root.activeTab !== "settings" && root.nextRace !== null
-        text: root.nextRace ? root.longCountdown(root.nextRace) : ""
-        color: root.fg
-        font.family: root.bar ? root.bar.fontFamily : Style.font.family
-        font.pixelSize: 18
-        font.bold: true
-      }
+        Column {
+          id: weekendOverview
+          width: parent.width
+          visible: root.activeTab !== "settings" && root.nextRace !== null
+          Column {
+            width: parent.width
+            spacing: Style.space(8)
+            Row {
+              width: parent.width
+              spacing: Style.space(10)
+              Text { id: heroFlag; visible: root.showRaceFlags; width: visible ? implicitWidth : 0; text: root.nextRace ? root.raceFlag(root.nextRace) : ""; font.pixelSize: Style.font.display }
+              Column {
+                width: parent.width - heroFlag.width - (heroRound.visible ? heroRound.implicitWidth + Style.space(10) : 0) - Style.space(10)
+                spacing: Style.space(1)
+                Text { width: parent.width; text: root.nextRace ? root.nextRace.name.toUpperCase() : "FIA WORLD ENDURANCE CHAMPIONSHIP"; elide: Text.ElideRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.heading; font.bold: true; font.letterSpacing: 1.0 }
+                Text { width: parent.width; text: root.nextRace ? root.raceDetails(root.nextRace).venue + " · " + root.raceDetails(root.nextRace).location : ""; elide: Text.ElideRight; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.body }
+              }
+              Text { id: heroRound; visible: root.nextRace && root.raceDetails(root.nextRace).round.length > 0; text: root.nextRace ? root.raceDetails(root.nextRace).round.toUpperCase() : ""; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.bodySmall; font.bold: true }
+            }
+            Rectangle { width: parent.width; height: 1; color: root.dim; opacity: 0.35 }
+            Row {
+              width: parent.width
+              spacing: Style.space(12)
+              Column {
+                id: nextTrack
+                width: parent.width * 0.48
+                spacing: Style.space(2)
+                Text { text: "NEXT ON TRACK"; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.caption; font.bold: true }
+                Text { width: parent.width; text: root.featuredSession ? root.featuredSession.name : "Schedule unavailable"; elide: Text.ElideRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.body; font.bold: true }
+                Text { width: parent.width; text: root.featuredSession ? Qt.formatDateTime(new Date(root.featuredSession.start), "ddd d MMM · HH:mm") : ""; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.bodySmall }
+              }
+              Column {
+                width: parent.width - nextTrack.width - Style.space(12)
+                spacing: Style.space(2)
+                Text { text: "RACE START"; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.caption; font.bold: true }
+                Text { width: parent.width; text: root.raceSession ? Qt.formatDateTime(new Date(root.raceSession.start), "ddd d MMM · HH:mm") : root.dateText(root.nextRace); elide: Text.ElideRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.body; font.bold: true }
+                Text { width: parent.width; text: root.longCountdown(root.nextRace).toUpperCase(); elide: Text.ElideRight; color: root.featuredSession && root.sessionStatus(root.featuredSession) === "LIVE" ? "#e10600" : root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.bodySmall; font.bold: true }
+              }
+            }
+          }
+       }
 
       Row {
         spacing: Style.space(8)
@@ -345,45 +376,52 @@ Panel {
         }
       }
 
-      PanelSeparator { width: parent.width; visible: root.activeTab === "weekend" }
-
-      Row {
-        width: parent.width
-        spacing: Style.space(36)
-        visible: root.activeTab === "weekend" && root.nextRace !== null
-
-        Column {
-          width: parent.width * 0.62
-          spacing: Style.space(4)
-          Text { text: "VENUE"; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12; font.bold: true }
-          Text { text: root.nextRace ? root.raceDetails(root.nextRace).venue : ""; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 15 }
-          Text { text: root.nextRace ? root.raceDetails(root.nextRace).location : ""; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
-        }
-        Column {
-          spacing: Style.space(4)
-          Text { text: "TRACK"; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12; font.bold: true }
-          Text { text: root.nextRace ? root.raceDetails(root.nextRace).trackLength : ""; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 15 }
-          Text { text: root.nextRace && root.raceDetails(root.nextRace).turns ? root.raceDetails(root.nextRace).turns + " turns" : ""; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
-        }
-      }
-
-      PanelSeparator { width: parent.width; visible: root.activeTab === "weekend" }
-
       Column {
         width: parent.width
         visible: root.activeTab === "weekend" && root.nextRace && root.raceDetails(root.nextRace).sessions.length > 0
         spacing: Style.space(7)
-        Text { text: "WEEKEND SCHEDULE · LOCAL TIME (" + root.localTimeZone() + ")"; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12; font.bold: true }
+        Text { text: "WEEKEND SCHEDULE"; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12; font.bold: true }
+        Text { text: "All times in " + root.localTimeZone(); color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12 }
         Repeater {
-          model: root.nextRace ? root.visibleSessions(root.nextRace) : []
-          delegate: Row {
+          model: root.nextRace ? root.visibleScheduleDays(root.nextRace) : []
+          delegate: Column {
+            id: dayGroup
             required property var modelData
             width: parent.width
-            opacity: root.sessionStatus(modelData) === "DONE" ? 0.45 : 1.0
-            Text { width: Style.space(100); text: Qt.formatDate(new Date(modelData.start), "ddd d MMM"); color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
-            Text { width: parent.width - Style.space(230); text: modelData.name; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
-            Text { width: Style.space(60); text: Qt.formatTime(new Date(modelData.start), "HH:mm"); horizontalAlignment: Text.AlignRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: modelData.name === "Race" }
-            Text { width: Style.space(70); text: root.sessionStatus(modelData); horizontalAlignment: Text.AlignRight; color: root.sessionStatusColor(modelData); font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12; font.bold: true }
+            spacing: Style.space(4)
+            Text {
+              width: parent.width
+              text: modelData.label.toUpperCase()
+              color: root.dim
+              font.family: root.bar ? root.bar.fontFamily : Style.font.family
+              font.pixelSize: 11
+              font.bold: true
+            }
+
+            Item {
+              width: parent.width
+              height: sessionsColumn.implicitHeight
+              Column {
+                id: sessionsColumn
+                width: parent.width
+                spacing: Style.space(3)
+                Repeater {
+                  model: dayGroup.modelData.sessions
+                  delegate: Item {
+                    required property var modelData
+                    width: parent.width
+                    height: Style.space(24)
+                    opacity: root.sessionStatus(modelData) === "DONE" ? 0.45 : 1.0
+                    readonly property string status: root.sessionStatus(modelData)
+                    readonly property bool isRace: modelData.name === "Race"
+                    Text { id: sessionTime; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; width: Style.space(64); horizontalAlignment: Text.AlignRight; text: Qt.formatTime(new Date(modelData.start), "HH:mm"); color: isRace || status === "LIVE" ? root.fg : root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: isRace || status === "LIVE" }
+                    Rectangle { id: sessionMarker; anchors.left: sessionTime.right; anchors.leftMargin: Style.space(10); anchors.verticalCenter: parent.verticalCenter; width: Style.space(5); height: width; radius: width / 2; color: status === "LIVE" ? "#e10600" : (isRace ? root.fg : root.dim); opacity: isRace || status === "LIVE" ? 1 : 0.45 }
+                    Text { id: sessionStatus; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; width: Math.max(Style.space(54), implicitWidth); horizontalAlignment: Text.AlignRight; text: parent.status === "DONE" ? "" : parent.status; color: parent.status === "LIVE" ? "#e10600" : root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12; font.bold: parent.status === "LIVE" }
+                    Text { anchors.left: sessionMarker.right; anchors.right: sessionStatus.left; anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.leftMargin: Style.space(10); anchors.rightMargin: Style.space(12); verticalAlignment: Text.AlignVCenter; text: modelData.name; elide: Text.ElideRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: isRace }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -420,7 +458,7 @@ Panel {
             font.pixelSize: 16
           }
           Text {
-            width: parent.width - Style.space(120) - (root.showRaceFlags ? Style.space(28) : 0)
+            width: Math.max(0, parent.width - Style.space(120) - (root.showRaceFlags ? Style.space(28) : 0))
             text: modelData.name
             color: root.fg
             elide: Text.ElideRight
@@ -434,10 +472,11 @@ Panel {
 
       Row {
         width: parent.width
-        visible: root.activeTab === "weekend"
+        visible: root.activeTab === "weekend" && !root.compactLayout
         Text {
-          width: parent.width - calendarLink.implicitWidth - Style.space(12)
+          width: Math.max(0, parent.width - calendarLink.implicitWidth - Style.space(12))
           text: root.calendarSourceText()
+          elide: Text.ElideRight
           color: root.dim
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: 12
@@ -454,6 +493,21 @@ Panel {
             cursorShape: Qt.PointingHandCursor
             onClicked: if (root.bar) root.bar.run("xdg-open https://www.fiawec.com/en/")
           }
+        }
+      }
+
+      Column {
+        width: parent.width
+        spacing: Style.space(6)
+        visible: root.activeTab === "weekend" && root.compactLayout
+        Text { width: parent.width; text: root.calendarSourceText(); elide: Text.ElideRight; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12 }
+        Text {
+          text: "OPEN FIA WEC ↗"
+          color: root.fg
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.pixelSize: 12
+          font.bold: true
+          MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: if (root.bar) root.bar.run("xdg-open https://www.fiawec.com/en/") }
         }
       }
 
@@ -624,92 +678,48 @@ Panel {
 
         PanelSeparator { width: parent.width }
 
-        Row {
+        Column {
           width: parent.width
-          height: Style.space(42)
-          Column {
-            width: parent.width - flagsToggle.width
-            anchors.verticalCenter: parent.verticalCenter
-            Text { text: "SHOW RACE FLAGS"; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: true }
-            Text { text: "Display event-country flags in the weekend view."; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12 }
-          }
-          Rectangle {
-            id: flagsToggle
-            width: Style.space(52)
-            height: Style.space(25)
-            anchors.verticalCenter: parent.verticalCenter
-            radius: Style.space(3)
-            color: root.showRaceFlags ? Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.16) : "transparent"
-            border.width: 1
-            border.color: root.showRaceFlags ? root.fg : root.dim
-            Text { anchors.centerIn: parent; text: root.showRaceFlags ? "ON" : "OFF"; color: root.showRaceFlags ? root.fg : root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 11; font.bold: true }
-            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.persistSettings({ showRaceFlags: !root.showRaceFlags }) }
-          }
-        }
-
-        Row {
-          width: parent.width
-          height: Style.space(42)
-          Column {
-            width: parent.width - completedToggle.width
-            anchors.verticalCenter: parent.verticalCenter
-            Text { text: "SHOW COMPLETED SESSIONS"; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: true }
-            Text { text: "Keep completed practice and qualifying sessions visible."; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12 }
-          }
-          Rectangle {
-            id: completedToggle
-            width: Style.space(52)
-            height: Style.space(25)
-            anchors.verticalCenter: parent.verticalCenter
-            radius: Style.space(3)
-            color: root.showCompletedSessions ? Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.16) : "transparent"
-            border.width: 1
-            border.color: root.showCompletedSessions ? root.fg : root.dim
-            Text { anchors.centerIn: parent; text: root.showCompletedSessions ? "ON" : "OFF"; color: root.showCompletedSessions ? root.fg : root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 11; font.bold: true }
-            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.persistSettings({ showCompletedSessions: !root.showCompletedSessions }) }
-          }
-        }
-
-        Row {
-          width: parent.width
-          height: Style.space(42)
-          Column {
-            width: parent.width - displayChoices.width - Style.space(12)
-            anchors.verticalCenter: parent.verticalCenter
-            Text { text: "BAR DISPLAY"; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: true }
-            Text { text: "Choose the information shown in the bar."; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12 }
-          }
+          spacing: Style.space(4)
           Row {
-            id: displayChoices
-            spacing: Style.space(5)
-            Repeater {
-              model: [
-                { id: "full", label: "FULL" },
-                { id: "icon", label: "LOGO" },
-                { id: "status", label: "ALERT" }
-              ]
-              delegate: Rectangle {
-                required property var modelData
-                implicitWidth: displayLabel.implicitWidth + Style.space(12)
-                implicitHeight: Style.space(25)
-                radius: Style.space(3)
-                color: root.selectedBarDisplay === modelData.id ? Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.16) : "transparent"
-                border.width: 1
-                border.color: root.selectedBarDisplay === modelData.id ? root.fg : root.dim
-                Text {
-                  id: displayLabel
-                  anchors.centerIn: parent
-                  text: modelData.label
-                  color: root.selectedBarDisplay === modelData.id ? root.fg : root.dim
-                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
-                  font.pixelSize: 11
-                  font.bold: true
-                }
-                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.persistSettings({ barDisplay: modelData.id }) }
-              }
+            width: parent.width
+            Text { width: parent.width - flagsToggle.width; text: "SHOW RACE FLAGS"; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: true }
+            Rectangle {
+              id: flagsToggle
+              width: Style.space(52)
+              height: Style.space(25)
+              radius: Style.space(3)
+              color: root.showRaceFlags ? Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.16) : "transparent"
+              border.width: 1
+              border.color: root.showRaceFlags ? root.fg : root.dim
+              Text { anchors.centerIn: parent; text: root.showRaceFlags ? "ON" : "OFF"; color: root.showRaceFlags ? root.fg : root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 11; font.bold: true }
+              MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.persistSettings({ showRaceFlags: !root.showRaceFlags }) }
             }
           }
+          Text { width: parent.width; text: "Display event-country flags in the weekend view."; wrapMode: Text.WordWrap; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12 }
         }
+
+        Column {
+          width: parent.width
+          spacing: Style.space(4)
+          Row {
+            width: parent.width
+            Text { width: parent.width - completedToggle.width; text: "SHOW COMPLETED SESSIONS"; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: true }
+            Rectangle {
+              id: completedToggle
+              width: Style.space(52)
+              height: Style.space(25)
+              radius: Style.space(3)
+              color: root.showCompletedSessions ? Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.16) : "transparent"
+              border.width: 1
+              border.color: root.showCompletedSessions ? root.fg : root.dim
+              Text { anchors.centerIn: parent; text: root.showCompletedSessions ? "ON" : "OFF"; color: root.showCompletedSessions ? root.fg : root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 11; font.bold: true }
+              MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.persistSettings({ showCompletedSessions: !root.showCompletedSessions }) }
+            }
+          }
+          Text { width: parent.width; text: "Keep completed practice and qualifying sessions visible."; wrapMode: Text.WordWrap; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12 }
+        }
+
       }
     }
     }
