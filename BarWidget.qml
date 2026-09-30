@@ -273,7 +273,9 @@ BarWidget {
       if (name.slice(-suffix.length) === suffix) name = name.slice(0, -suffix.length)
       statuses[name] = statusMatch[2]
     }
-    var re = /<div[^>]*class="fw-bold lh-sm"[^>]*>\s*([^<]+)\s*<\/div>[\s\S]{0,800}?data-local="([^"]+)"[^>]*data-timestamp="(\d+)"/g
+    // FIA has added whitespace to this class attribute before; match the
+    // required class tokens rather than its exact serialized value.
+    var re = /<div[^>]*class="(?=[^"]*\bfw-bold\b)(?=[^"]*\blh-sm\b)[^"]*"[^>]*>\s*([^<]+)\s*<\/div>[\s\S]{0,800}?data-local="([^"]+)"[^>]*data-timestamp="(\d+)"/g
     var match
     while ((match = re.exec(html)) !== null) {
       var ms = Number(match[3]) * 1000
