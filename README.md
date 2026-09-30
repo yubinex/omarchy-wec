@@ -6,7 +6,7 @@ It shows the next race or active weekend session in the bar. Click the widget
 for the event panel, which includes the race countdown, venue, format, weekend
 schedule when available, and upcoming races.
 
-![WEC weekend panel](assets/weekend-panel.png)
+![WEC weekend panel](assets/weekend-panel.png?v=2)
 
 ## Data sources
 
