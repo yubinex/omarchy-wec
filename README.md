@@ -30,8 +30,18 @@ omarchy plugin update yubinex.wec --yes
 ## Controls
 
 - Left click: open or close the event panel
+- Escape: close the open event panel
 - Middle click: refresh the calendar
 - Right click: open the official FIA WEC site
+
+## Trademark notice
+
+FIA WEC and the WEC logo are trademarks of their respective owners. This
+unofficial plugin is not affiliated with or endorsed by the FIA, the ACO, or Le
+Mans Endurance Management. The WEC logo is loaded from
+[Wikimedia Commons](https://commons.wikimedia.org/wiki/File:WEC_Logo.svg), where
+it is identified as public-domain artwork; trademark rights still apply. Event
+data is fetched directly from fiawec.com and belongs to its owners.
 
 ## License
 
