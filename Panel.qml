@@ -62,6 +62,9 @@ Panel {
   readonly property color fg: bar ? bar.foreground : Color.foreground
   readonly property color dim: Qt.darker(fg, 1.55)
   readonly property bool compactLayout: popup.contentWidth < Style.space(400)
+  // KeyboardPanel can fit to very narrow work areas. At this size, preserve
+  // primary information rather than letting fixed metadata overlap it.
+  readonly property bool veryCompactLayout: popup.contentWidth < Style.space(240)
 
   readonly property var nextRace: {
     for (var i = 0; i < races.length; ++i) {
@@ -298,14 +301,16 @@ Panel {
             Row {
               width: parent.width
               spacing: Style.space(10)
-              Text { id: heroFlag; visible: root.showRaceFlags; width: visible ? implicitWidth : 0; text: root.nextRace ? root.raceFlag(root.nextRace) : ""; font.pixelSize: Style.font.display }
+              Text { id: heroFlag; visible: root.showRaceFlags && !root.veryCompactLayout; width: visible ? implicitWidth : 0; text: root.nextRace ? root.raceFlag(root.nextRace) : ""; font.pixelSize: Style.font.display }
               Column {
-                width: parent.width - heroFlag.width - (heroRound.visible ? heroRound.implicitWidth + Style.space(10) : 0) - Style.space(10)
+                width: Math.max(0, parent.width - heroFlag.width - heroRound.width
+                  - (heroFlag.visible ? Style.space(10) : 0)
+                  - (heroRound.visible ? Style.space(10) : 0))
                 spacing: Style.space(1)
                 Text { width: parent.width; text: root.nextRace ? root.nextRace.name.toUpperCase() : "FIA WORLD ENDURANCE CHAMPIONSHIP"; elide: Text.ElideRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.heading; font.bold: true; font.letterSpacing: 1.0 }
                 Text { width: parent.width; text: root.nextRace ? root.raceDetails(root.nextRace).venue + " · " + root.raceDetails(root.nextRace).location : ""; elide: Text.ElideRight; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.body }
               }
-              Text { id: heroRound; visible: root.nextRace && root.raceDetails(root.nextRace).round.length > 0; text: root.nextRace ? root.raceDetails(root.nextRace).round.toUpperCase() : ""; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.bodySmall; font.bold: true }
+              Text { id: heroRound; visible: root.nextRace && root.raceDetails(root.nextRace).round.length > 0 && !root.veryCompactLayout; width: visible ? Math.min(implicitWidth, root.compactLayout ? Style.space(48) : Style.space(72)) : 0; text: root.nextRace ? root.raceDetails(root.nextRace).round.toUpperCase() : ""; elide: Text.ElideRight; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.bodySmall; font.bold: true }
             }
             Rectangle { width: parent.width; height: 1; color: root.dim; opacity: 0.35 }
             Row {
@@ -317,7 +322,7 @@ Panel {
                 spacing: Style.space(2)
                 Text { text: "NEXT ON TRACK"; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.caption; font.bold: true }
                 Text { width: parent.width; text: root.featuredSession ? root.featuredSession.name : "Schedule unavailable"; elide: Text.ElideRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.body; font.bold: true }
-                Text { width: parent.width; text: root.featuredSession ? Qt.formatDateTime(new Date(root.featuredSession.start), "ddd d MMM · HH:mm") : ""; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.bodySmall }
+                Text { width: parent.width; text: root.featuredSession ? Qt.formatDateTime(new Date(root.featuredSession.start), "ddd d MMM · HH:mm") : ""; elide: Text.ElideRight; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.bodySmall }
               }
               Column {
                 width: parent.width - nextTrack.width - Style.space(12)
@@ -330,13 +335,14 @@ Panel {
           }
        }
 
-      Row {
+       Flow {
+         width: parent.width
         spacing: Style.space(8)
 
         Repeater {
           model: [
-            { id: "weekend", label: "RACE WEEKEND" },
-            { id: "standings", label: "STANDINGS" }
+            { id: "weekend", label: "RACE WEEKEND", compactLabel: "WEEKEND" },
+            { id: "standings", label: "STANDINGS", compactLabel: "STANDINGS" }
           ]
 
           delegate: Rectangle {
@@ -351,7 +357,7 @@ Panel {
             Text {
               id: tabLabel
               anchors.centerIn: parent
-              text: modelData.label
+              text: root.veryCompactLayout ? modelData.compactLabel : modelData.label
               color: root.activeTab === modelData.id ? root.fg : root.dim
               font.family: root.bar ? root.bar.fontFamily : Style.font.family
               font.pixelSize: 12
@@ -407,17 +413,17 @@ Panel {
                 spacing: Style.space(3)
                 Repeater {
                   model: dayGroup.modelData.sessions
-                  delegate: Item {
+                   delegate: Item {
                     required property var modelData
                     width: parent.width
-                    height: Style.space(24)
+                     height: root.compactLayout ? Style.space(40) : Style.space(24)
                     opacity: root.sessionStatus(modelData) === "DONE" ? 0.45 : 1.0
                     readonly property string status: root.sessionStatus(modelData)
                     readonly property bool isRace: modelData.name === "Race"
-                    Text { id: sessionTime; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; width: Style.space(64); horizontalAlignment: Text.AlignRight; text: Qt.formatTime(new Date(modelData.start), "HH:mm"); color: isRace || status === "LIVE" ? root.fg : root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: isRace || status === "LIVE" }
-                    Rectangle { id: sessionMarker; anchors.left: sessionTime.right; anchors.leftMargin: Style.space(10); anchors.verticalCenter: parent.verticalCenter; width: Style.space(5); height: width; radius: width / 2; color: status === "LIVE" ? "#e10600" : (isRace ? root.fg : root.dim); opacity: isRace || status === "LIVE" ? 1 : 0.45 }
-                    Text { id: sessionStatus; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; width: Math.max(Style.space(54), implicitWidth); horizontalAlignment: Text.AlignRight; text: parent.status === "DONE" ? "" : parent.status; color: parent.status === "LIVE" ? "#e10600" : root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12; font.bold: parent.status === "LIVE" }
-                    Text { anchors.left: sessionMarker.right; anchors.right: sessionStatus.left; anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.leftMargin: Style.space(10); anchors.rightMargin: Style.space(12); verticalAlignment: Text.AlignVCenter; text: modelData.name; elide: Text.ElideRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: isRace }
+                     Text { id: sessionTime; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; width: root.compactLayout ? Style.space(48) : Style.space(64); horizontalAlignment: Text.AlignRight; text: Qt.formatTime(new Date(modelData.start), "HH:mm"); color: isRace || status === "LIVE" ? root.fg : root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: isRace || status === "LIVE" }
+                     Rectangle { id: sessionMarker; anchors.left: sessionTime.right; anchors.leftMargin: Style.space(10); anchors.verticalCenter: parent.verticalCenter; width: Style.space(5); height: width; radius: width / 2; color: status === "LIVE" ? "#e10600" : (isRace ? root.fg : root.dim); opacity: isRace || status === "LIVE" ? 1 : 0.45 }
+                     Text { id: sessionStatus; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; width: root.compactLayout ? 0 : Math.min(Math.max(Style.space(54), implicitWidth), Style.space(72)); horizontalAlignment: Text.AlignRight; text: parent.status === "DONE" ? "" : parent.status; elide: Text.ElideRight; color: parent.status === "LIVE" ? "#e10600" : root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12; font.bold: parent.status === "LIVE" }
+                     Text { anchors.left: sessionMarker.right; anchors.right: root.compactLayout ? parent.right : sessionStatus.left; anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.leftMargin: Style.space(10); anchors.rightMargin: Style.space(12); verticalAlignment: Text.AlignVCenter; text: modelData.name + (root.compactLayout && status && status !== "DONE" ? " · " + status : ""); elide: root.compactLayout ? Text.ElideNone : Text.ElideRight; wrapMode: root.compactLayout ? Text.WordWrap : Text.NoWrap; maximumLineCount: root.compactLayout ? 2 : 1; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: isRace }
                   }
                 }
               }
@@ -445,20 +451,21 @@ Panel {
           spacing: Style.space(12)
 
           Text {
-            width: Style.space(108)
+            width: root.veryCompactLayout ? 0 : Style.space(108)
             text: Qt.formatDate(new Date(root.dateMs(modelData.date)), "d MMM yyyy")
+            visible: !root.veryCompactLayout
             color: root.dim
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
             font.pixelSize: 14
           }
           Text {
-            width: root.showRaceFlags ? Style.space(28) : 0
+            width: root.showRaceFlags && !root.veryCompactLayout ? Style.space(28) : 0
             text: root.raceFlag(modelData)
-            visible: root.showRaceFlags
+            visible: root.showRaceFlags && !root.veryCompactLayout
             font.pixelSize: 16
           }
           Text {
-            width: Math.max(0, parent.width - Style.space(120) - (root.showRaceFlags ? Style.space(28) : 0))
+             width: Math.max(0, parent.width - (root.veryCompactLayout ? 0 : Style.space(108)) - (root.showRaceFlags && !root.veryCompactLayout ? Style.space(28) : 0) - (root.veryCompactLayout ? 0 : (root.showRaceFlags ? Style.space(24) : Style.space(12))))
             text: modelData.name
             color: root.fg
             elide: Text.ElideRight
@@ -521,10 +528,10 @@ Panel {
           spacing: Style.space(6)
           Repeater {
             model: [
-              { id: "manufacturers", label: "HYPERCAR MFRS" },
-              { id: "hypercarDrivers", label: "HYPERCAR DRIVERS" },
-              { id: "lmgt3Teams", label: "LMGT3 TEAMS" },
-              { id: "lmgt3Drivers", label: "LMGT3 DRIVERS" }
+              { id: "manufacturers", label: "HYPERCAR MFRS", compactLabel: "MFRS" },
+              { id: "hypercarDrivers", label: "HYPERCAR DRIVERS", compactLabel: "HCAR" },
+              { id: "lmgt3Teams", label: "LMGT3 TEAMS", compactLabel: "TEAMS" },
+              { id: "lmgt3Drivers", label: "LMGT3 DRIVERS", compactLabel: "DRIVERS" }
             ]
             delegate: Rectangle {
               required property var modelData
@@ -537,7 +544,7 @@ Panel {
               Text {
                 id: categoryLabel
                 anchors.centerIn: parent
-                text: modelData.label
+                text: root.veryCompactLayout ? modelData.compactLabel : modelData.label
                 color: root.standingsTab === modelData.id ? root.fg : root.dim
                 font.family: root.bar ? root.bar.fontFamily : Style.font.family
                 font.pixelSize: 11
@@ -555,7 +562,9 @@ Panel {
         }
 
         Text {
+          width: parent.width
           text: root.standingsTitle()
+          elide: Text.ElideRight
           color: root.fg
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: 17
@@ -563,7 +572,9 @@ Panel {
         }
 
         Text {
+          width: parent.width
           text: "2026 FIA World Endurance Championship"
+          elide: Text.ElideRight
           color: root.dim
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: 13
@@ -577,17 +588,17 @@ Panel {
           delegate: Row {
             required property var modelData
             width: parent.width
-            height: Style.space(38)
+            height: root.veryCompactLayout ? Style.space(56) : Style.space(38)
 
-            Text { width: Style.space(46); height: parent.height; text: "P" + modelData.position; verticalAlignment: Text.AlignVCenter; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
+            Text { width: root.veryCompactLayout ? Style.space(28) : Style.space(46); height: parent.height; text: "P" + modelData.position; verticalAlignment: Text.AlignVCenter; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14 }
             Column {
-              width: parent.width - Style.space(130)
+              width: Math.max(0, parent.width - (root.veryCompactLayout ? Style.space(76) : Style.space(130)))
               anchors.verticalCenter: parent.verticalCenter
               Text { width: parent.width; text: modelData.name; elide: Text.ElideRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 15; font.bold: modelData.position === 1 }
-              Text { visible: Boolean(modelData.detail); text: modelData.detail || ""; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12 }
+              Text { width: parent.width; visible: Boolean(modelData.detail); text: modelData.detail || ""; elide: Text.ElideRight; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 12 }
             }
             Column {
-              width: Style.space(84)
+              width: root.veryCompactLayout ? Style.space(48) : Style.space(84)
               anchors.verticalCenter: parent.verticalCenter
               Text { width: parent.width; text: modelData.points + " pts"; horizontalAlignment: Text.AlignRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: true }
               Text { width: parent.width; text: root.pointsGap(modelData); horizontalAlignment: Text.AlignRight; color: root.dim; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 11 }
@@ -620,8 +631,9 @@ Panel {
         Row {
           width: parent.width
           Text {
-            width: parent.width - standingsLink.implicitWidth - Style.space(12)
+            width: Math.max(0, parent.width - standingsLink.implicitWidth - Style.space(12))
             text: root.standingsSourceText()
+            elide: Text.ElideRight
             color: root.dim
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
             font.pixelSize: 12
@@ -670,7 +682,9 @@ Panel {
         }
 
         Text {
+          width: parent.width
           text: "Preferences are saved to your Omarchy bar layout."
+          wrapMode: Text.WordWrap
           color: root.dim
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: 13
@@ -683,7 +697,7 @@ Panel {
           spacing: Style.space(4)
           Row {
             width: parent.width
-            Text { width: parent.width - flagsToggle.width; text: "SHOW RACE FLAGS"; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: true }
+           Text { width: Math.max(0, parent.width - flagsToggle.width); text: "SHOW RACE FLAGS"; elide: Text.ElideRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: true }
             Rectangle {
               id: flagsToggle
               width: Style.space(52)
@@ -704,7 +718,7 @@ Panel {
           spacing: Style.space(4)
           Row {
             width: parent.width
-            Text { width: parent.width - completedToggle.width; text: "SHOW COMPLETED SESSIONS"; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: true }
+           Text { width: Math.max(0, parent.width - completedToggle.width); text: "SHOW COMPLETED SESSIONS"; elide: Text.ElideRight; color: root.fg; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: 14; font.bold: true }
             Rectangle {
               id: completedToggle
               width: Style.space(52)

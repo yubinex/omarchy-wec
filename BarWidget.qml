@@ -436,7 +436,7 @@ BarWidget {
     labelVisible: root.barDisplay !== "icon" && root.barDisplay !== "status"
     hasVisualContent: root.barDisplay === "status"
     fixedWidth: root.barDisplay === "status"
-      ? Style.space(52) + (root.statusText.length > 0 ? statusLabel.implicitWidth + Style.space(8) : 0)
+      ? Style.space(52) + (root.statusText.length > 0 ? statusLabel.width + Style.space(8) : 0)
       : root.barDisplay === "icon" ? Style.space(52) : -1
     active: root.sessionLive
     tooltipText: root.tooltip
@@ -476,7 +476,9 @@ BarWidget {
         id: statusLabel
         anchors.verticalCenter: parent.verticalCenter
         visible: root.statusText.length > 0
+        width: Math.min(implicitWidth, Style.space(112))
         text: root.statusText
+        elide: Text.ElideRight
         color: root.sessionLive ? "#e10600" : button.foreground
         font.family: button.fontFamily
         font.pixelSize: Style.font.bodySmall
