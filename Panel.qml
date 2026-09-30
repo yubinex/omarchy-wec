@@ -19,6 +19,7 @@ Panel {
   property string activeTab: "weekend"
   property string standingsTab: "manufacturers"
   property bool showAllStandings: false
+  property var expandedScheduleDays: ({})
   readonly property bool showRaceFlags: setting("showRaceFlags", true)
   readonly property bool showCompletedSessions: setting("showCompletedSessions", true)
   // Official FIA WEC classifications, captured on 4 Sep 2026. These remain
@@ -215,6 +216,17 @@ Panel {
     return days
   }
 
+  function isScheduleDayExpanded(day) {
+    if (expandedScheduleDays[day] !== undefined) return expandedScheduleDays[day]
+    return featuredSession && Qt.formatDate(new Date(featuredSession.start), "yyyy-MM-dd") === day
+  }
+
+  function toggleScheduleDay(day) {
+    var next = Object.assign({}, expandedScheduleDays)
+    next[day] = !isScheduleDayExpanded(day)
+    expandedScheduleDays = next
+  }
+
   function sessionStatus(session) {
     var start = Date.parse(session.start)
     if (session.officialStatus === "EventCompleted") return "DONE"
@@ -393,20 +405,43 @@ Panel {
           delegate: Column {
             id: dayGroup
             required property var modelData
+            readonly property bool expanded: root.isScheduleDayExpanded(modelData.key)
             width: parent.width
             spacing: Style.space(4)
-            Text {
+            Item {
               width: parent.width
-              text: modelData.label.toUpperCase()
-              color: root.dim
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: 11
-              font.bold: true
+              height: Style.space(18)
+              Text {
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.max(0, parent.width - dayToggle.implicitWidth)
+                text: modelData.label.toUpperCase() + " · " + modelData.sessions.length + " SESSION" + (modelData.sessions.length === 1 ? "" : "S")
+                elide: Text.ElideRight
+                color: root.dim
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: 11
+                font.bold: true
+              }
+              Text {
+                id: dayToggle
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                text: dayGroup.expanded ? "⌃" : "⌄"
+                color: root.dim
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: 14
+              }
+              MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.toggleScheduleDay(dayGroup.modelData.key)
+              }
             }
 
             Item {
               width: parent.width
-              height: sessionsColumn.implicitHeight
+              visible: dayGroup.expanded
+              height: visible ? sessionsColumn.implicitHeight : 0
               Column {
                 id: sessionsColumn
                 width: parent.width
