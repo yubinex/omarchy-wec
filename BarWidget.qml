@@ -259,11 +259,47 @@ BarWidget {
     return ""
   }
 
+  function structuredWeekend(html, race) {
+    var scripts = /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
+    var match
+    while ((match = scripts.exec(html)) !== null) {
+      var event
+      try {
+        event = JSON.parse(match[1])
+      } catch (error) {
+        continue
+      }
+      if (!event || !event.subEvent || !event.location) continue
+      var sessions = []
+      var suffix = " - " + race.name
+      for (var i = 0; i < event.subEvent.length; ++i) {
+        var subEvent = event.subEvent[i]
+        if (!subEvent.name || !subEvent.startDate) continue
+        var name = subEvent.name
+        if (name.slice(-suffix.length) === suffix) name = name.slice(0, -suffix.length)
+        var status = String(subEvent.eventStatus || "").split("/").pop()
+        sessions.push({
+          day: Qt.formatDate(new Date(subEvent.startDate), "ddd d MMM"),
+          name: name,
+          time: Qt.formatTime(new Date(subEvent.startDate), "HH:mm"),
+          start: new Date(subEvent.startDate).toISOString(),
+          officialStatus: status
+        })
+      }
+      if (sessions.length) {
+        sessions.sort(function(a, b) { return Date.parse(a.start) - Date.parse(b.start) })
+        return { location: event.location, sessions: sessions }
+      }
+    }
+    return null
+  }
+
   function parseWeekend(html, race) {
+    var structured = structuredWeekend(html, race)
     var location = /"location"\s*:\s*\{[\s\S]{0,600}?"name"\s*:\s*"([^"]+)"[\s\S]{0,600}?"address"\s*:\s*"([^"]+)"/.exec(html)
     var trackLength = /Length\s*<span[^>]*>\s*([^<]+)\s*<\/span>/.exec(html)
     var turns = /<div[^>]*>\s*(\d+)\s+Turns\s*<span/.exec(html)
-    var sessions = []
+    var sessions = structured ? structured.sessions : []
     var statuses = ({})
     var statusRe = /"@id"\s*:\s*"[^"]+#[^"]+",\s*"name"\s*:\s*"([^"]+)"[\s\S]{0,300}?"eventStatus"\s*:\s*"[^"]*\/([^"]+)"/g
     var statusMatch
@@ -277,17 +313,20 @@ BarWidget {
     // required class tokens rather than its exact serialized value.
     var re = /<div[^>]*class="(?=[^"]*\bfw-bold\b)(?=[^"]*\blh-sm\b)[^"]*"[^>]*>\s*([^<]+)\s*<\/div>[\s\S]{0,800}?data-local="([^"]+)"[^>]*data-timestamp="(\d+)"/g
     var match
-    while ((match = re.exec(html)) !== null) {
-      var ms = Number(match[3]) * 1000
-      var sessionName = plainText(match[1])
-      sessions.push({ day: Qt.formatDate(new Date(ms), "ddd d MMM"), name: sessionName, time: time24(match[2]), start: new Date(ms).toISOString(), officialStatus: statuses[sessionName] || "" })
+    if (!sessions.length) {
+      while ((match = re.exec(html)) !== null) {
+        var ms = Number(match[3]) * 1000
+        var sessionName = plainText(match[1])
+        sessions.push({ day: Qt.formatDate(new Date(ms), "ddd d MMM"), name: sessionName, time: time24(match[2]), start: new Date(ms).toISOString(), officialStatus: statuses[sessionName] || "" })
+      }
     }
-    if (!location || !sessions.length) return null
+    if (!sessions.length) return null
     var year = race.date.slice(0, 4)
     var round = 0
     for (var i = 0; i < races.length; ++i) if (races[i].date.slice(0, 4) === year && races[i].date <= race.date) ++round
-    var address = plainText(location[2])
-    return { venue: plainText(location[1]), location: address, countryCode: countryCodeFromAddress(address), trackLength: trackLength ? plainText(trackLength[1]) : "", turns: turns ? Number(turns[1]) : 0, round: "Round " + round, sessions: sessions }
+    var venue = location ? plainText(location[1]) : structured && structured.location ? plainText(structured.location.name || "") : ""
+    var address = location ? plainText(location[2]) : structured && structured.location ? plainText(structured.location.address || "") : ""
+    return { venue: venue, location: address, countryCode: countryCodeFromAddress(address), trackLength: trackLength ? plainText(trackLength[1]) : "", turns: turns ? Number(turns[1]) : 0, round: "Round " + round, sessions: sessions }
   }
 
   function refreshWeekend() {
