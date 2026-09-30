@@ -279,6 +279,14 @@ Panel {
     // merely clamping a fixed-width card's position on narrow outputs.
     contentWidth: popup.fittedContentWidth(Style.space(520))
     contentHeight: popup.fittedContentHeight(content.implicitHeight)
+    focusTarget: keyboardCatcher
+
+    PanelKeyCatcher {
+      id: keyboardCatcher
+      anchors.fill: parent
+      z: -1
+      onCloseRequested: root.close()
+    }
 
     Flickable {
       id: scroll
